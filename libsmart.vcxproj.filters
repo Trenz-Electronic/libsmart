@@ -1,0 +1,56 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="smart\CircularBuffer.h" />
+    <ClInclude Include="smart\Directory.h" />
+    <ClInclude Include="smart\Disk.h" />
+    <ClInclude Include="smart\File.h" />
+    <ClInclude Include="smart\getopt.h" />
+    <ClInclude Include="smart\MappedFile.h" />
+    <ClInclude Include="smart\memory.h" />
+    <ClInclude Include="smart\mylogf.h" />
+    <ClInclude Include="smart\Path.h" />
+    <ClInclude Include="smart\Process.h" />
+    <ClInclude Include="smart\string.h" />
+    <ClInclude Include="smart\Symlink.h" />
+    <ClInclude Include="smart\time.h" />
+    <ClInclude Include="smart\TimeScheduler.h" />
+    <ClInclude Include="smart\WavFormat.h" />
+    <ClInclude Include="smart\ts\Queue.h">
+      <Filter>ts</Filter>
+    </ClInclude>
+    <ClInclude Include="smart\Random.h" />
+    <ClInclude Include="smart\hw\AxiDataCapture.h">
+      <Filter>hw</Filter>
+    </ClInclude>
+    <ClInclude Include="smart\UioDevice.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="smart\Directory.cpp" />
+    <ClCompile Include="smart\Disk.cpp" />
+    <ClCompile Include="smart\File.cpp" />
+    <ClCompile Include="smart\getopt.cpp" />
+    <ClCompile Include="smart\MappedFile.cpp" />
+    <ClCompile Include="smart\mylogf.cpp" />
+    <ClCompile Include="smart\Path.cpp" />
+    <ClCompile Include="smart\Process.cpp" />
+    <ClCompile Include="smart\string.cpp" />
+    <ClCompile Include="smart\Symlink.cpp" />
+    <ClCompile Include="smart\time.cpp" />
+    <ClCompile Include="smart\TimeScheduler.cpp" />
+    <ClCompile Include="smart\WavFormat.cpp" />
+    <ClCompile Include="smart\Random.cpp" />
+    <ClCompile Include="smart\hw\AxiDataCapture.cpp">
+      <Filter>hw</Filter>
+    </ClCompile>
+    <ClCompile Include="smart\UioDevice.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="ts">
+      <UniqueIdentifier>{fe840a5a-cb8a-4f3a-b640-8c224fbdd475}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="hw">
+      <UniqueIdentifier>{d394c628-ec25-43a5-bd31-f170e76273bd}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
