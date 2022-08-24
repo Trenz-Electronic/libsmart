@@ -16,7 +16,7 @@ Usage
 # Update the timestamps on the files
 ./touch-configure.sh
 # Traditional configure script
-./configure.sh
+./configure
 # Traditional make
 make
 
