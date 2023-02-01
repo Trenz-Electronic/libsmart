@@ -1,3 +1,4 @@
+#include <stdlib.h>   // size_t for crack
 #include <crack.h>		// password check
 #include <crypt.h>		// SHA512 encryption
 #include <grp.h>		// for /etc/group
