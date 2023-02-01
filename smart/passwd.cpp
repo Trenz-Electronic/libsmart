@@ -541,7 +541,7 @@ void changePassword(const char *user, const char *pwd)
 	{
 		if (!strcmp(spwdstruct->sp_namp, user))
 		{
-			sprintf(spwdstruct->sp_pwdp, npw);
+			strcpy(spwdstruct->sp_pwdp, npw);
 			spwdstruct->sp_lstchg = dateOfChange;
 		}
 		putspent(spwdstruct, new_shadow);
