@@ -4,7 +4,7 @@
 
 #include <memory>	// std::make_unique, etc.
 
-#if !defined(_MSC_VER)
+#if !defined(_MSC_VER) && (__cplusplus < 201402L)
 /**
  *  std::make_unique replacement for C++11
  *
