@@ -21,8 +21,15 @@ Usage
 make
 
 
+Requirements
+------------
+
+apt install libcrack2-dev
+
+
 Development
 -----------
+
 
 Problem:  # configure.ac: AX_CXX_COMPILE_STDCXX_11 requires this.
 Solution: apt-get install autoconf-archive
