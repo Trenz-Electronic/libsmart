@@ -2,22 +2,59 @@ cmake_minimum_required(VERSION 3.0)
 project(libsmart CXX)
 
 # Set the version information here
-set(MAJOR_VERSION 1)
-set(LIBVER ${MAJOR_VERSION}.0.0)
+set(CPACK_PACKAGE_VERSION_MAJOR 1)
+set(CPACK_PACKAGE_VERSION_MINOR 0)
+set(CPACK_PACKAGE_VERSION_PATCH 0)
+set(CPACK_DEB_COMPONENT_INSTALL ON)
+
+set(LIBVER ${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH})
+
+set(CPACK_PACKAGE_VENDOR "Trenz Electronic GmbH")
+set(CPACK_PACKAGE_CONTACT "a.errapart@trenz-electronic.de")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Andrei Errapart <${CPACK_PACKAGE_CONTACT}>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "C++ routines for UIO device management, WAV file handling and more"
+    CACHE STRING "C++ routines for UIO device management, WAV file reading and writing, Process creation, Thread management and simply for reading and writingfiles"
+)
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT) # otherwise we will get _Linux.deb file and not _amd64.deb.
+set(CPACK_STRIP_FILES YES)
+# FIXME: correct interdependency problems
+#set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS YES)
+set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS YES)
+set(CPACK_COMPONENTS_GROUPING IGNORE) # one package per component
+
+
+# Package: libsmart
+set(CPACK_DEBIAN_SMART_PACKAGE_NAME "libsmart")
+set(CPACK_DEBIAN_SMART_PACKAGE_SHLIBDEPS YES)
+
+
+# Package: libsmart-dev
+set(CPACK_DEBIAN_SMARTDEV_PACKAGE_NAME "libsmart-dev")
+set(CPACK_DEBIAN_SMARTDEV_SHLIBDEPS YES)
+
+# Package: uio
+set(CPACK_DEBIAN_TOOLS_PACKAGE_NAME "libsmart-tools")
+set(CPACK_DEBIAN_TOOLS_DESCRIPTION¶ "Tools and sample programs based on libsmart")
+# TODO: how to avoid SHLIBDEPS failing to find our own libraries?
+
 
 find_package(PkgConfig)
 find_package(Threads)
-# FIXME: how to check for libcrack2?
+
+# Requirements
+# TODO: how to check for libcrack2?
 
 # libsmart
 file(GLOB smart_includes smart/*.h)
-install(FILES ${smart_includes} DESTINATION include/smart)
+install(FILES ${smart_includes} DESTINATION include/smart COMPONENT smartdev)
 
 file(GLOB smart_includes_hw smart/hw/*.h)
-install(FILES ${smart_includes_hw} DESTINATION include/smart/hw)
+install(FILES ${smart_includes_hw} DESTINATION include/smart/hw COMPONENT smartdev)
 
 file(GLOB smart_includes_ts smart/ts/*.h)
-install(FILES ${smart_includes_ts} DESTINATION include/smart/ts)
+install(FILES ${smart_includes_ts} DESTINATION include/smart/ts COMPONENT smartdev)
 
 file(GLOB_RECURSE smart_sources smart/*.cpp)
 add_library(smart SHARED ${smart_sources})
@@ -25,8 +62,9 @@ add_library(smart SHARED ${smart_sources})
 target_link_libraries(smart ${CMAKE_THREAD_LIBS_INIT})
 set_target_properties(smart PROPERTIES DEFINE_SYMBOL "smart_EXPORTS")
 #set_target_properties(smart PROPERTIES OUTPUT_NAME smart)
-set_target_properties(smart PROPERTIES SOVERSION ${MAJOR_VERSION})
+set_target_properties(smart PROPERTIES SOVERSION ${CPACK_PACKAGE_VERSION_MAJOR})
 set_target_properties(smart PROPERTIES VERSION ${LIBVER})
+install(TARGETS smart LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT smart)
 
 
 # uio
@@ -34,4 +72,12 @@ file(GLOB uio_sources src_uio/*.cpp)
 add_executable(uio ${uio_sources} )
 target_link_libraries(uio smart crack crypt m)
 target_compile_options(uio PUBLIC -I${CMAKE_CURRENT_SOURCE_DIR})
+install(TARGETS uio RUNTIME DESTINATION bin COMPONENT tools)
+
+# Debian packages
+include(CPack) # this must come after all install statements.
+cpack_add_component(smart)
+cpack_add_component(smartdev DEPENDS smart)
+cpack_add_component(tools DEPENDS smart)
+get_cmake_property(CPACK_COMPONENTS_ALL COMPONENTS)
 
