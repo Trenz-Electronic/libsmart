@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.0)
 project(libsmart CXX)
 
+include(GNUInstallDirs) # for the CMAKE_INSTALL_XXX to work
+
 # Set the version information here
 set(CPACK_PACKAGE_VERSION_MAJOR 1)
 set(CPACK_PACKAGE_VERSION_MINOR 0)
@@ -66,6 +68,21 @@ set_target_properties(smart PROPERTIES SOVERSION ${CPACK_PACKAGE_VERSION_MAJOR})
 set_target_properties(smart PROPERTIES VERSION ${LIBVER})
 install(TARGETS smart LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT smart)
 
+set(prefix ${CMAKE_INSTALL_PREFIX})
+set(exec_prefix \${prefix})
+set(libdir \${exec_prefix})
+set(includedir \${prefix}/include)
+
+CONFIGURE_FILE(
+    ${CMAKE_CURRENT_SOURCE_DIR}/libsmart.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/libsmart.pc
+@ONLY)
+
+INSTALL(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/libsmart.pc
+    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig"
+    COMPONENT smartdev
+)
 
 # uio
 file(GLOB uio_sources src_uio/*.cpp)
