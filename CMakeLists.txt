@@ -61,6 +61,10 @@ install(FILES ${smart_includes_ts} DESTINATION include/smart/ts COMPONENT smartd
 file(GLOB_RECURSE smart_sources smart/*.cpp)
 add_library(smart SHARED ${smart_sources})
 
+target_compile_features(smart PUBLIC cxx_std_20)  # C++ 20 adds coroutines.
+if(CMAKE_COMPILER_IS_GNUCXX AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11)
+  target_compile_options(smart PUBLIC "-fcoroutines")
+endif()
 target_link_libraries(smart ${CMAKE_THREAD_LIBS_INIT})
 set_target_properties(smart PROPERTIES DEFINE_SYMBOL "smart_EXPORTS")
 #set_target_properties(smart PROPERTIES OUTPUT_NAME smart)
@@ -87,6 +91,10 @@ INSTALL(
 # uio
 file(GLOB uio_sources src_uio/*.cpp)
 add_executable(uio ${uio_sources} )
+target_compile_features(uio PUBLIC cxx_std_20)  # C++ 20 adds coroutines.
+if(CMAKE_COMPILER_IS_GNUCXX AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11)
+  target_compile_options(uio PUBLIC "-fcoroutines")
+endif()
 target_link_libraries(uio smart crack crypt m)
 target_compile_options(uio PUBLIC -I${CMAKE_CURRENT_SOURCE_DIR})
 install(TARGETS uio RUNTIME DESTINATION bin COMPONENT tools)
