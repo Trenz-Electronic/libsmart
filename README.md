@@ -1,5 +1,4 @@
-Introduction
-------------
+# Introduction
 
 C++ routines for:
 * UIO device management
@@ -11,30 +10,13 @@ C++ routines for:
 This is in use in customer project firmware, both Petalinux and Debian.
 
 
-Usage
------
-# Update the timestamps on the files
-./touch-configure.sh
-# Traditional configure script
-./configure
-# Traditional make
-make
-
-
-Requirements
-------------
+# Complete list of instructions on how to create Debian packages
 
 apt install libcrack2-dev
+mkdir build
+cd build
+cmake ..
+cmake --build .
+cpack -G deb
 
-
-Development
------------
-
-
-Problem:  # configure.ac: AX_CXX_COMPILE_STDCXX_11 requires this.
-Solution: apt-get install autoconf-archive
-
-
-After changing Makefile.am or autoconf.ac, run the following command:
-	./autogen.sh
 
