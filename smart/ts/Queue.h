@@ -21,21 +21,17 @@ namespace ts {
 
 /**
  * FIFO style thread safe queue of elements.
- *
- * Makes copy of elements into and out of container.
  */
 template<class T>
 class Queue
 {
 public:
 	/**
-	 * Push an element into FiFo
-	 *
-	 * Makes a copy of the element
+	 * Push an element into FiFo.
 	 */
-	void push( const T &element ){
+	void push( T element ){
 		std::lock_guard<std::recursive_mutex> guard(_mutex);
-		_list_of_elements.push_back( element );
+		_list_of_elements.push_back( std::move(element) );
 	}
 
 	/**
