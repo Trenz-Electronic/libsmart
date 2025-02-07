@@ -86,4 +86,8 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+# more build dirs
+/.vs/
+/out/
+/Win32/Debug
 /Win32/Release
