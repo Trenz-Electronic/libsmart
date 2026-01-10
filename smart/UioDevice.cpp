@@ -18,9 +18,12 @@
 #include <ctype.h>		// isspace
 #if !defined(WIN32)
 #include <dirent.h>		// scandir
+#include <errno.h>		// errno
+#include <fcntl.h>		// open
 #include <inttypes.h>		// PRIuPTR
-#include <unistd.h>		// getpagesize
+#include <unistd.h>		// getpagesize, close
 #include <string.h>		// strcasecmp
+#include <sys/ioctl.h>		// ioctl
 #include <sys/types.h>	// stat
 #include <sys/stat.h>	// stat
 #endif
@@ -38,6 +41,19 @@
 #endif
 
 namespace smart {
+
+// --------------------------------------------------------------------------------------------------------------------
+// Cache sync ioctl definitions (from smartio.h)
+#if !defined(WIN32)
+#define SMARTIO_IOC_MAGIC 'S'
+
+struct smartio_cache_op {
+	std::uint64_t offset;
+	std::uint64_t size;
+};
+
+#define SMARTIO_SYNC_FOR_CPU  _IOW(SMARTIO_IOC_MAGIC, 1, struct smartio_cache_op)
+#endif
 
 /// Prefix of the UIO path.
 #define	UIO_PATH		"/sys/class/uio"
@@ -297,6 +313,7 @@ void UioDevice::_init(const unsigned int device_index, const char* device_name)
 	char		device_dir[200];
 	char		maps_dir[200];
 	index = device_index;
+	_syncFd = -1;
 	_file = std::make_shared<File>(ssprintf("/dev/uio%u", device_index));
 
 	sprintf(device_dir, UIO_PATH_PREFIX "%u", device_index);
@@ -322,6 +339,20 @@ void UioDevice::_init(const unsigned int device_index, const char* device_name)
 		}
 	}
 	getIpCoreConfiguration(ipCoreConfiguration, name, maps.size()==0 ? 0 : maps[0].addr);
+
+	// Check for non-coherent sync device name in device tree config
+	auto it = _find_config("sync-name");
+	if (it != ipCoreConfiguration.end() && !it->second.empty()) {
+		std::string syncName;
+		for (auto c : it->second) {
+			if (c != 0) syncName += (char)c;
+		}
+		if (!syncName.empty()) {
+			std::string syncPath = "/dev/" + syncName;
+			_syncFd = open(syncPath.c_str(), O_RDWR);
+			// Note: if open fails, _syncFd remains -1 (coherent mode)
+		}
+	}
 #endif
 }
 
@@ -410,6 +441,50 @@ bool UioDevice::_getConfigurationUInt32(std::uint32_t& destination, std::string&
 	}
 	destination = r;
 	return true;
+}
+
+// -------------------------------------------------------------------------------------
+UioDevice::~UioDevice()
+{
+#if !defined(WIN32)
+	if (_syncFd >= 0) {
+		close(_syncFd);
+		_syncFd = -1;
+	}
+#endif
+}
+
+// -------------------------------------------------------------------------------------
+bool UioDevice::syncBufferForCpu(std::uint64_t offset, std::uint64_t size)
+{
+#if !defined(WIN32)
+	if (_syncFd < 0) {
+		return false;  // No sync device, coherent buffer
+	}
+
+	struct smartio_cache_op op;
+	op.offset = offset;
+	op.size = size;  // 0 means entire buffer
+
+	int ret = ioctl(_syncFd, SMARTIO_SYNC_FOR_CPU, &op);
+	if (ret < 0) {
+		throw std::runtime_error(ssprintf("%s: syncBufferForCpu failed: %s",
+						  name.c_str(), strerror(errno)));
+	}
+	return true;
+#else
+	return false;
+#endif
+}
+
+// -------------------------------------------------------------------------------------
+bool UioDevice::isNonCoherent() const
+{
+#if !defined(WIN32)
+	return _syncFd >= 0;
+#else
+	return false;
+#endif
 }
 
 } // namespace smart

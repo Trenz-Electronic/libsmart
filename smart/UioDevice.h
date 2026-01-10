@@ -78,12 +78,25 @@ public:
 
 	/// Get the device filehandle for handling IRQ-s.
 	File::Handle getFileHandle();
+
+	/// Synchronize buffer for CPU access (invalidate cache after device writes).
+	/// This is only needed for non-coherent DMA buffers.
+	/// @param offset Offset within the buffer (0 for start)
+	/// @param size Size to sync (0 for entire buffer)
+	/// @return true if sync was performed, false if not needed (coherent buffer)
+	bool syncBufferForCpu(std::uint64_t offset = 0, std::uint64_t size = 0);
+
+	/// Check if this device uses non-coherent DMA.
+	bool isNonCoherent() const;
 public:
 	/// Open an UIO device of a given index.
 	UioDevice(const unsigned int	device_index);
 
 	/// Open an UIO device of a given name.
 	UioDevice(const char* device_name);
+
+	/// Destructor.
+	~UioDevice();
 
 	/// Is the device present?
 	static bool isDevicePresent(const unsigned int device_index);
@@ -99,6 +112,8 @@ private:
 	void _init(const unsigned int device_index, const char* device_name);
 
 	std::shared_ptr<File>	_file;
+	int			_syncFd;	///< File descriptor for /dev/<sync-name>, -1 if not available
+
 	/// Get the iterator to the configuration of the device as described in the device tree.
 	/// Note: this doesn't throw exceptions.
 	IpCoreConfigurationMap::const_iterator	_find_config(const std::string& name);
