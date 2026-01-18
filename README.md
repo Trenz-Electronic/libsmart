@@ -10,13 +10,28 @@ C++ routines for:
 This is in use in customer project firmware, both Petalinux and Debian.
 
 
-# Complete list of instructions on how to create Debian packages
+# Building
 
 ```shell
-apt install libcrack2-dev
+sudo apt install libcrack2-dev
 mkdir build
 cd build
 cmake ..
 cmake --build .
+```
+
+# Running tests
+
+```shell
+cd build
+cmake -DBUILD_TESTS=ON ..
+cmake --build .
+ctest --output-on-failure
+```
+
+# Creating Debian packages
+
+```shell
+cd build
 cpack -G DEB
 ```
