@@ -1,5 +1,7 @@
 # Introduction
 
+![CMake on multiple platforms](https://github.com/Trenz-Electronic/libsmart/actions/workflows/cmake-multi-platform.yml/badge.svg)
+
 C++ routines for:
 * UIO device management
 * WAV file reading and writing
