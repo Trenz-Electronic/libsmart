@@ -86,7 +86,7 @@ static void read_map(
 	const char*			device_dir,
 	const unsigned int	map_index)
 {
-	char map_dir[200];
+	char map_dir[256];
 
 	snprintf(map_dir, sizeof(map_dir), "%s/maps/map%u", device_dir, map_index);
 	map.addr = read_uint(map_dir, "addr");
@@ -311,7 +311,7 @@ void UioDevice::_init(const unsigned int device_index, const char* device_name)
 	throw std::runtime_error("UioDevice::_init: Not implemented on WIN32");
 #else
 	char		device_dir[200];
-	char		maps_dir[200];
+	char		maps_dir[256];
 	index = device_index;
 	_syncFd = -1;
 	_file = std::make_shared<File>(ssprintf("/dev/uio%u", device_index));
