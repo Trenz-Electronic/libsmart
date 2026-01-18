@@ -63,7 +63,7 @@ struct smartio_cache_op {
 static std::uintptr_t read_uint(const char* base_dir, const char* filename)
 {
 	char		full_path[200];
-	sprintf(full_path, "%s/%s", base_dir, filename);
+	snprintf(full_path, sizeof(full_path), "%s/%s", base_dir, filename);
 	const auto	s = File::readAllText(full_path);
 	return uint_of(s);
 }
@@ -88,7 +88,7 @@ static void read_map(
 {
 	char map_dir[200];
 
-	sprintf(map_dir, "%s/maps/map%u", device_dir, map_index);
+	snprintf(map_dir, sizeof(map_dir), "%s/maps/map%u", device_dir, map_index);
 	map.addr = read_uint(map_dir, "addr");
 	map.name = read_text(map_dir, "name");
 	map.offset = read_uint(map_dir, "offset");
@@ -243,7 +243,7 @@ static const int int8_of_hexchar(const char c)
 UioDevice::UioDevice(const unsigned int	device_index)
 {
 	char	device_dir[200];
-	sprintf(device_dir, UIO_PATH_PREFIX "%u", device_index);
+	snprintf(device_dir, sizeof(device_dir), UIO_PATH_PREFIX "%u", device_index);
 	const auto	device_name = read_text(device_dir, "name");
 	_init(device_index, device_name.c_str());
 }
@@ -273,14 +273,14 @@ static bool scan_by_name(unsigned int& deviceIndex, std::string& deviceName, con
 	}
 
 	if (is_index_valid) {
-		sprintf(device_dir, UIO_PATH_PREFIX "%u", deviceIndex);
+		snprintf(device_dir, sizeof(device_dir), UIO_PATH_PREFIX "%u", deviceIndex);
 		deviceName = read_text(device_dir, "name");
 		return true;
 	}
 
 	// d) scan for the name.
 	for (unsigned int device_index=0; UioDevice::isDevicePresent(device_index); ++device_index) {
-		sprintf(device_dir, UIO_PATH_PREFIX "%u", device_index);
+		snprintf(device_dir, sizeof(device_dir), UIO_PATH_PREFIX "%u", device_index);
 		deviceName = read_text(device_dir, "name");
 		if (strcasecmp(deviceName.c_str(), pDeviceName)==0) {
 			deviceIndex = device_index;
@@ -316,8 +316,8 @@ void UioDevice::_init(const unsigned int device_index, const char* device_name)
 	_syncFd = -1;
 	_file = std::make_shared<File>(ssprintf("/dev/uio%u", device_index));
 
-	sprintf(device_dir, UIO_PATH_PREFIX "%u", device_index);
-	sprintf(maps_dir, "%s/maps", device_dir);
+	snprintf(device_dir, sizeof(device_dir), UIO_PATH_PREFIX "%u", device_index);
+	snprintf(maps_dir, sizeof(maps_dir), "%s/maps", device_dir);
 
 	std::vector<std::string>	map_dirs(Directory::getFiles(maps_dir));
 
@@ -366,7 +366,7 @@ UioDevice::isDevicePresent(const unsigned int device_index)
 	char		device_dir[200];
 	struct stat	st;
 
-	sprintf(device_dir, UIO_PATH_PREFIX "%u", device_index);
+	snprintf(device_dir, sizeof(device_dir), UIO_PATH_PREFIX "%u", device_index);
 	const int	r_stat = stat(device_dir, &st);
 	return r_stat == 0;
 #endif
