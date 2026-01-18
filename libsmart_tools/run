@@ -1,0 +1,38 @@
+#!/bin/sh
+# libsmart build environment runner
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Trenz Electronic GmbH
+#
+# This script downloads docker-booster if needed and runs it via a symlink.
+# The symlink is necessary because docker-booster uses $0 to find the Dockerfile.
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DOCKER_BOOSTER_DIR="${SCRIPT_DIR}/docker-booster"
+DOCKER_BOOSTER_SCRIPT="${DOCKER_BOOSTER_DIR}/build-and-run"
+DOCKER_BOOSTER_URL="https://raw.githubusercontent.com/Trenz-Electronic/docker-booster/refs/heads/main/build-and-run"
+SYMLINK="${SCRIPT_DIR}/_run"
+
+# Download docker-booster if not present
+if [ ! -f "${DOCKER_BOOSTER_SCRIPT}" ]; then
+    echo "Downloading docker-booster..."
+    mkdir -p "${DOCKER_BOOSTER_DIR}"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "${DOCKER_BOOSTER_SCRIPT}" "${DOCKER_BOOSTER_URL}"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "${DOCKER_BOOSTER_SCRIPT}" "${DOCKER_BOOSTER_URL}"
+    else
+        echo "Error: Neither curl nor wget is available" >&2
+        exit 1
+    fi
+    chmod +x "${DOCKER_BOOSTER_SCRIPT}"
+fi
+
+# Create symlink if not present (docker-booster uses $0 to find Dockerfile)
+if [ ! -L "${SYMLINK}" ]; then
+    ln -s docker-booster/build-and-run "${SYMLINK}"
+fi
+
+# Execute via the symlink so docker-booster finds Dockerfile in this directory
+exec "${SYMLINK}" "$@"

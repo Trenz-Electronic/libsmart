@@ -91,3 +91,8 @@ dkms.conf
 /out/
 /Win32/Debug
 /Win32/Release
+/build*/
+
+# libsmart_tools auto-generated files
+/libsmart_tools/docker-booster/
+/libsmart_tools/_run

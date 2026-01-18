@@ -45,6 +45,20 @@ set(CPACK_DEBIAN_TOOLS_DESCRIPTION¶ "Tools and sample programs based on libsmar
 find_package(PkgConfig)
 find_package(Threads)
 
+# Testing
+option(BUILD_TESTS "Build unit tests" OFF)
+if(BUILD_TESTS)
+    include(FetchContent)
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.5.0
+    )
+    FetchContent_MakeAvailable(Catch2)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
 # Requirements
 # TODO: how to check for libcrack2?
 
