@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 project(libsmart CXX)
 
 include(GNUInstallDirs) # for the CMAKE_INSTALL_XXX to work
