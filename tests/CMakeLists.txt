@@ -3,6 +3,7 @@ add_executable(test_smart
     test_path.cpp
     test_circular_buffer.cpp
     test_wav_format.cpp
+    test_wavfile.cpp
 )
 target_link_libraries(test_smart PRIVATE smart crack crypt Catch2::Catch2WithMain)
 target_include_directories(test_smart PRIVATE ${CMAKE_SOURCE_DIR})
