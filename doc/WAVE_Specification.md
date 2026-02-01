@@ -34,10 +34,10 @@ The data in WAVE files can be of many different types. Data format codes are lis
 
 - **Internet RFC, Codec registrations, 1998-06:**
   <ftp://ftp.isi.edu/in-notes/rfc2361.txt>  
-  Local copy: [rfc2361.txt](Docs/rfc2361.txt)
+  Local copy: [rfc2361.txt](rfc2361.txt)
 
 - **Microsoft include files** (part of the MSVC compiler or the *DirectX SDK*: from [Microsoft Download Center](http://www.microsoft.com/downloads/search.asp)). For new installations of Visual Studio, the `mmreg.h` include file is installed into `C:\Program Files (x86)\Windows Kits\10\Include\10.0.15063.0\shared`. This document shows a huge number of (proprietary) compressed formats, most of which are now obsolete.  
-  Local copy: [mmreg.h](Docs/Pages%20from%20mmreg.h.pdf) (extract of Version 1.58)
+  Local copy: [mmreg.h](Pages_from_mmreg.h.pdf) (extract of Version 1.58)
 
 ---
 
