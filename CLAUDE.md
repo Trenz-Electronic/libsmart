@@ -49,7 +49,17 @@ Alternatively, `libsmart_tools/run` provides a Docker-based build environment.
 - `smart::ends_with` - Suffix check (requires suffix strictly shorter than string)
 - `smart::Path::combine` - Path joining (always adds separator, doesn't normalize)
 
+### WAV File Components
+
+- **WavFile** (`smart/WavFile.h`) - Base WAV file writer producing standard RIFF/WAVE with `fmt` and `data` chunks. Supports `fillBuffer` (in-memory) and `writeFile` (to disk).
+- **WavFileDisk** (`smart/WavFileDisk.h`) - Streaming WAV writer for incremental sample output to disk.
+- **WavFileSimple** (`smart/WavFileSimple.h`) - Extended WAV writer supporting cue points and LIST/adtl metadata (labels, notes, files).
+- **wav_verify** (`tests/wav_verify.h`) - Header-only WAV structure validator. `wav_verify()` checks an in-memory buffer; `wav_verify_file()` reads from disk. Reports issues (errors/warnings/info) and parses fmt, data, cue, and LIST/adtl chunks.
+
+WAV format reference documentation is in `doc/` — see `doc/CLAUDE.md` for a guide to each document.
+
 ### Build Outputs
 
 - `libsmart.so` - Shared library
 - `uio` - CLI tool for UIO device interaction (links against libcrack2)
+- `wav-verify` - CLI tool for WAV file structure verification
