@@ -1,19 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <smart/WavFormat.h>
+#include "wav_verify.h"
 
 #include <cstdio>
 #include <cstring>
 #include <vector>
-
-// Helper to read little-endian uint32 from buffer
-static uint32_t read_u32_le(const uint8_t* buf) {
-    return buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
-}
-
-// Helper to read little-endian uint16 from buffer
-static uint16_t read_u16_le(const uint8_t* buf) {
-    return buf[0] | (buf[1] << 8);
-}
 
 TEST_CASE("makeHeader structure verification", "[wav]") {
     std::vector<uint8_t> header;
