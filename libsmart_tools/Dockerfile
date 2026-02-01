@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     ca-certificates \
     libcrack2-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 #mount ..:/work
