@@ -136,8 +136,14 @@ uint32_t WavFile::Chunk::getDataSize()
 	}
 	else for( auto i = _contents.begin(); i != _contents.end(); i++ )
 	{
-		// compound chunk
-		rv += (*i)->getSize();
+		// compound chunk: each child occupies getSize() + pad byte on disk
+		uint32_t child_sz = (*i)->getSize();
+		if( child_sz > 0 )
+		{
+			rv += child_sz;
+			if( child_sz & 1 )
+				rv += 1; // RIFF word-alignment pad byte
+		}
 	}
 
 	return rv;
@@ -180,7 +186,16 @@ uint32_t WavFile::Chunk::fillBuffer( uint8_t **buf, uint32_t &maxlen )
 	}
 	else for( auto i = _contents.begin(); i != _contents.end(); i++ )
 	{
-		rv += (*i)->fillBuffer( buf, maxlen );
+		uint32_t child_written = (*i)->fillBuffer( buf, maxlen );
+		rv += child_written;
+		if( child_written > 0 && (child_written & 1) )
+		{
+			// RIFF word-alignment pad byte
+			**buf = 0;
+			(*buf)++;
+			maxlen--;
+			rv++;
+		}
 	}
 
 	return rv;
@@ -219,7 +234,14 @@ uint32_t WavFile::Chunk::writeFile( FILE *fp )
 	}
 	else for( auto i = _contents.begin(); i != _contents.end(); i++ )
 	{
-		rv += (*i)->writeFile( fp );
+		uint32_t child_written = (*i)->writeFile( fp );
+		rv += child_written;
+		if( child_written > 0 && (child_written & 1) )
+		{
+			// RIFF word-alignment pad byte
+			uint8_t pad = 0;
+			rv += fwrite( &pad, 1, 1, fp );
+		}
 	}
 
 	return rv;
@@ -314,7 +336,10 @@ void WavFile::Chunk::seekFileEndOfChunk()
 	if( _filebuf == nullptr )
 		return;
 
-	int64_t pos = _filepos + getDataSize() + _header->_size;
+	chunk_t *hdr = (chunk_t*)_header->_field;
+	int64_t pos = _filepos + sizeof(chunk_t) + hdr->ckSize;
+	if( hdr->ckSize & 1 )
+		pos++; // skip RIFF word-alignment pad byte
 	fseek( _filebuf->_file, static_cast<long>(pos), SEEK_SET );
 }
 
@@ -339,6 +364,14 @@ void WavFile::Chunk::seekFileStartOfChunk()
 	fseek( _filebuf->_file, static_cast<long>(pos), SEEK_SET );
 }
 
+uint32_t WavFile::Chunk::getPadSize()
+{
+	uint32_t sz = getSize();
+	if( sz == 0 )
+		return 0;
+	return (sz & 1) ? 1 : 0;
+}
+
 bool WavFile::Chunk::inFileRange()
 {
 	if( _filebuf == nullptr )
@@ -350,7 +383,10 @@ bool WavFile::Chunk::inFileRange()
 		return false;
 
 	chunk_t *hdr = (chunk_t*)_header->_field;
-	if( pos >= (_filepos + hdr->ckSize + sizeof(chunk_t)) )
+	int64_t end = _filepos + hdr->ckSize + sizeof(chunk_t);
+	if( hdr->ckSize & 1 )
+		end++; // account for RIFF word-alignment pad byte
+	if( pos >= end )
 		return false;
 
 	return true;
@@ -360,12 +396,6 @@ bool WavFile::Chunk::inFileRange()
 WavFile::LeafChunk::LeafChunk( Chunk *parent, uint32_t header_size, uint32_t data_size, fourcc_t ckID )
 : Chunk( parent, header_size, ckID )
 {
-  // align the data size, 
-  // reason: strage behaviour of frite, trhows alignment trap on big file
-	uint32_t remainder = data_size % 4;
-	if( remainder )
-		data_size += 4 - remainder;
-  // allocate memory for the data 
 	if( data_size > 0 )
 		addPiece( data_size );
 }
@@ -494,7 +524,36 @@ uint32_t WavFile::PcmDataChunk::writeFile( FILE *fp )
 	}
 	else
 	{
-		rv = Chunk::writeFile( fp );
+		uint32_t limited = getDataSize();
+		uint32_t full = Chunk::getDataSize();
+		if( limited < full )
+		{
+			// _row_length truncation: write only limited bytes
+			if( fp == NULL )
+				return 0;
+			uint32_t total = _header->_size + limited;
+			if( !total )
+				return 0;
+
+			chunk_t *hdr = (chunk_t*)_header->_field;
+			hdr->ckSize = total - sizeof(chunk_t);
+
+			rv = fwrite( _header->_field, 1, _header->_size, fp );
+
+			uint32_t remaining = limited;
+			for( auto &d : _data )
+			{
+				if( !d->_field || remaining == 0 )
+					break;
+				uint32_t to_write = (d->_size < remaining) ? static_cast<uint32_t>(d->_size) : remaining;
+				rv += fwrite( d->_field, 1, to_write, fp );
+				remaining -= to_write;
+			}
+		}
+		else
+		{
+			rv = Chunk::writeFile( fp );
+		}
 	}
 	//printf("WavFile::PcmDataChunk::writeFile rv=%u\n", rv);
 	return rv;
@@ -502,14 +561,33 @@ uint32_t WavFile::PcmDataChunk::writeFile( FILE *fp )
 
 uint32_t WavFile::PcmDataChunk::getDataSize()
 {
-	const unsigned int	data_size = Chunk::getDataSize() / _ratefactor;
-	if (_row_length > 0u) {
-		const unsigned int	real_data_size = (data_size / _row_length) * _row_length;
-		return real_data_size;
+	const unsigned int raw = Chunk::getDataSize();
+	unsigned int data_size;
+
+	if( _ratefactor > 1 )
+	{
+		// Decimation: the write loop starts at sample 0 and steps by _ratefactor,
+		// producing ceil(total_samples / _ratefactor) output samples.
+		const unsigned int samplelen = _nchannels * sizeof(int16_t);
+		if( samplelen == 0 )
+			return 0;
+		const unsigned int total_samples = raw / samplelen;
+		if( total_samples == 0 )
+			return 0;
+		const unsigned int output_samples = (total_samples - 1) / _ratefactor + 1;
+		data_size = output_samples * samplelen;
 	}
-	else {
-		return data_size;
+	else
+	{
+		data_size = raw;
 	}
+
+	if( _row_length > 0u )
+	{
+		data_size = (data_size / _row_length) * _row_length;
+	}
+
+	return data_size;
 }
 
 /**
@@ -777,7 +855,7 @@ void WavFile::CueChunk::setPoint( fourcc_t name,
 	cue_point_t *point = (cue_point_t *)addPiece( sizeof(cue_point_t) )->_field;
 
 	point->dwName = name;
-	point->dwPosition = hdr->dwCuePoints;
+	point->dwPosition = sample_offset;
 	point->fccChunk = chunk_name;
 	point->dwChunkStart = chunk_start;
 	point->dwBlockStart = block_start;
