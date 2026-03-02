@@ -45,10 +45,11 @@ set(CPACK_DEBIAN_TOOLS_DESCRIPTION¶ "Tools and sample programs based on libsmar
 find_package(PkgConfig)
 find_package(Threads)
 
+include(FetchContent)
+
 # Testing
 option(BUILD_TESTS "Build unit tests" OFF)
 if(BUILD_TESTS)
-    include(FetchContent)
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
@@ -101,6 +102,17 @@ INSTALL(
     DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig"
     COMPONENT smartdev
 )
+
+# yaml-cpp for wavfile-create
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG 0.8.0
+)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(yaml-cpp)
 
 # Apps
 add_subdirectory(apps)
