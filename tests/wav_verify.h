@@ -198,6 +198,25 @@ inline void parse_cue(WavVerifyResult& r, const uint8_t* data, size_t len,
                   "declared=" + std::to_string(r.cue_points_declared)
                   + " fit=" + std::to_string(r.cue_points_fit));
     }
+
+    // P5: check dwPosition vs dwSampleOffset for simple data-chunk cue points
+    for (uint32_t i = 0; i < r.cue_points_fit && 4 + (i + 1) * 24 <= ck_size; i++) {
+        const uint8_t* pt = data + 4 + i * 24;
+        uint32_t dwPosition     = read_u32_le(pt + 4);
+        std::string fccChunk    = read_fourcc(pt + 8);
+        uint32_t dwChunkStart   = read_u32_le(pt + 12);
+        uint32_t dwBlockStart   = read_u32_le(pt + 16);
+        uint32_t dwSampleOffset = read_u32_le(pt + 20);
+
+        if (fccChunk == "data" && dwChunkStart == 0 && dwBlockStart == 0) {
+            if (dwPosition != dwSampleOffset) {
+                add_issue(r, WavIssueLevel::info, "P5_SEQ_POSITION",
+                          "cue point " + std::to_string(i)
+                          + ": dwPosition=" + std::to_string(dwPosition)
+                          + " != dwSampleOffset=" + std::to_string(dwSampleOffset));
+            }
+        }
+    }
 }
 
 inline void parse_list(WavVerifyResult& r, const uint8_t* chunk_data,
@@ -363,6 +382,29 @@ inline WavVerifyResult wav_verify(const uint8_t* data, size_t len) {
         add_issue(r, WavIssueLevel::error, "MISSING_FMT", "no fmt chunk found");
     if (!r.has_data)
         add_issue(r, WavIssueLevel::error, "MISSING_DATA", "no data chunk found");
+
+    // P3: data ckSize not frame-aligned
+    if (r.has_fmt && r.has_data && r.format_tag == 1) {
+        if (r.block_align > 0 && r.data_ck_size % r.block_align != 0) {
+            add_issue(r, WavIssueLevel::warning, "P3_DATA_NOT_BLOCK_ALIGNED",
+                      "data ckSize=" + std::to_string(r.data_ck_size)
+                      + " is not a multiple of blockAlign=" + std::to_string(r.block_align));
+        }
+    }
+
+    // P7: fmt must appear before data
+    {
+        size_t fmt_idx = SIZE_MAX, data_idx = SIZE_MAX;
+        for (size_t i = 0; i < r.chunks.size(); i++) {
+            if (r.chunks[i].id == "fmt " && fmt_idx == SIZE_MAX) fmt_idx = i;
+            if (r.chunks[i].id == "data" && data_idx == SIZE_MAX) data_idx = i;
+        }
+        if (data_idx != SIZE_MAX && (fmt_idx == SIZE_MAX || fmt_idx > data_idx)) {
+            add_issue(r, WavIssueLevel::warning, "P7_FMT_AFTER_DATA",
+                      "data chunk at index " + std::to_string(data_idx)
+                      + " appears before fmt chunk");
+        }
+    }
 
     r.valid = !r.has_errors();
     return r;

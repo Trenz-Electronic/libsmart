@@ -348,6 +348,9 @@ TEST_CASE("wav_verify: WavFileSimplePcm with cue, labels, files", "[wavfile][ver
 	REQUIRE(r.label_count >= 1);   // "Trigger point" label
 	REQUIRE(r.file_count >= 1);    // CNFG file
 
+	// P5: after fix, dwPosition == dwSampleOffset for all cue points
+	CHECK_FALSE(r.has_issue_tagged("P5_SEQ_POSITION"));
+
 	std::remove(path);
 }
 
@@ -373,11 +376,93 @@ TEST_CASE("wav_verify: detect P1/P2 issues with odd-length labels", "[wavfile][v
 	auto r = wav_verify_file(path);
 	INFO(r.summary());
 
-	// Check that at least one of the known library issues is detected
-	bool has_p1 = r.has_issue_tagged("P1_NO_PAD");
-	bool has_p2 = r.has_issue_tagged("P2_PADDED_CKSIZE");
-	// The library has known issues P1 and/or P2 with odd-length label data
-	CHECK((has_p1 || has_p2));
+	// After P1/P2 fixes, the writer produces correct output
+	CHECK_FALSE(r.has_issue_tagged("P1_NO_PAD"));
+	CHECK_FALSE(r.has_issue_tagged("P2_PADDED_CKSIZE"));
+	CHECK(r.valid);
+
+	std::remove(path);
+}
+
+TEST_CASE("wav_verify: ratefactor>1 round-trip (P3)", "[wavfile][verify]") {
+	// Exercise the decimation path with a sample count not divisible by ratefactor.
+	// 1001 stereo 16-bit samples, ratefactor=3 → ceil(1001/3) = 334 output samples.
+	const uint32_t num_samples = 1001;
+	const uint32_t data_bytes = num_samples * sizeof(sample_stereo_16_t);
+
+	uint8_t sound_data[data_bytes];
+	fill_sawtooth(sound_data, num_samples);
+
+	const char* path = "/tmp/test_wavfile_p3_roundtrip.wav";
+
+	{
+		smart::WavFileSimplePcm simple(2, 44100, 16, 3);
+		simple.addData(sound_data, data_bytes);
+
+		FILE* f = fopen(path, "wb");
+		REQUIRE(f != nullptr);
+		uint32_t written = simple.writeFile(f);
+		fclose(f);
+		REQUIRE(written > 0);
+	}
+
+	{
+		auto r = wav_verify_file(path);
+		INFO(r.summary());
+
+		REQUIRE(r.has_fmt);
+		REQUIRE(r.has_data);
+		CHECK(r.format_tag == 1);
+		CHECK(r.channels == 2);
+		CHECK(r.samples_per_sec == 14700); // 44100 / 3
+
+		// ceil(1001/3) = 334 output samples × 4 bytes = 1336
+		CHECK(r.data_ck_size == 1336);
+		CHECK_FALSE(r.has_issue_tagged("RIFF_SIZE_MISMATCH"));
+		CHECK_FALSE(r.has_issue_tagged("P3_DATA_NOT_BLOCK_ALIGNED"));
+		CHECK(r.valid);
+	}
+
+	std::remove(path);
+}
+
+TEST_CASE("wav_verify: row_length truncation round-trip (P4)", "[wavfile][verify]") {
+	// 24-bit mono: block_align=3, internal _row_length=4.
+	// Provide 13 bytes (not a multiple of _row_length=4).
+	// Writer should truncate to 12 bytes (4 complete frames).
+	const uint32_t data_bytes = 13;
+	uint8_t sound_data[data_bytes];
+	for (uint32_t i = 0; i < data_bytes; i++)
+		sound_data[i] = static_cast<uint8_t>(i + 1);
+
+	const char* path = "/tmp/test_wavfile_p4_roundtrip.wav";
+
+	{
+		smart::WavFileSimplePcm simple(1, 48000, 24);
+		simple.addData(sound_data, data_bytes);
+
+		FILE* f = fopen(path, "wb");
+		REQUIRE(f != nullptr);
+		uint32_t written = simple.writeFile(f);
+		fclose(f);
+		REQUIRE(written > 0);
+	}
+
+	{
+		auto r = wav_verify_file(path);
+		INFO(r.summary());
+
+		REQUIRE(r.has_fmt);
+		REQUIRE(r.has_data);
+		CHECK(r.format_tag == 1);
+		CHECK(r.channels == 1);
+		CHECK(r.block_align == 3);
+		// Truncated to floor(13/4)*4 = 12 bytes = 4 frames of 24-bit mono
+		CHECK(r.data_ck_size == 12);
+		CHECK_FALSE(r.has_issue_tagged("RIFF_SIZE_MISMATCH"));
+		CHECK_FALSE(r.has_issue_tagged("P3_DATA_NOT_BLOCK_ALIGNED"));
+		CHECK(r.valid);
+	}
 
 	std::remove(path);
 }
