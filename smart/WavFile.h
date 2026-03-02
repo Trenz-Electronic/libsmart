@@ -210,6 +210,13 @@ public:
 		 */
 		bool inFileRange();
 
+		/** Get the RIFF word-alignment pad byte size for this chunk.
+		 *
+		 * Returns 1 if ckSize is odd (pad byte needed), 0 otherwise.
+		 * The pad byte is NOT included in ckSize but occupies space in the file.
+		 */
+		uint32_t getPadSize();
+
 	protected:
 		std::shared_ptr<MemBuffer> _header;
 		std::vector< std::shared_ptr<MemBuffer> > _data;
