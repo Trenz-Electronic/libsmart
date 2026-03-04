@@ -106,6 +106,9 @@ INSTALL(
 # Apps
 add_subdirectory(apps)
 
+# Examples
+add_subdirectory(examples)
+
 # Debian packages
 include(CPack) # this must come after all install statements.
 cpack_add_component(smart)

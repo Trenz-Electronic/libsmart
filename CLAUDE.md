@@ -26,7 +26,15 @@ ctest --output-on-failure
 cpack -G DEB
 ```
 
-Alternatively, `libsmart_tools/run` provides a Docker-based build environment.
+When `cmake` is not installed locally, use `libsmart_tools/run` to build inside a Docker container. It wraps any command with the correct build environment:
+
+```bash
+# Build inside Docker
+libsmart_tools/run bash -c "cd build && cmake .. && cmake --build . -j4"
+
+# Build with tests inside Docker
+libsmart_tools/run bash -c "cd build && cmake -DBUILD_TESTS=ON .. && cmake --build . -j4 && ctest --output-on-failure"
+```
 
 ## Architecture
 
