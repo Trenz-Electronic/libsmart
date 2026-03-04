@@ -1,0 +1,11 @@
+add_executable(uart-terminal uart_terminal.cpp)
+target_compile_features(uart-terminal PUBLIC cxx_std_20)
+target_compile_options(uart-terminal PUBLIC -I${CMAKE_SOURCE_DIR})
+target_link_libraries(uart-terminal smart crack crypt m)
+install(TARGETS uart-terminal RUNTIME DESTINATION bin COMPONENT tools)
+
+add_executable(gpio-blink gpio_blink.cpp)
+target_compile_features(gpio-blink PUBLIC cxx_std_20)
+target_compile_options(gpio-blink PUBLIC -I${CMAKE_SOURCE_DIR})
+target_link_libraries(gpio-blink smart crack crypt m)
+install(TARGETS gpio-blink RUNTIME DESTINATION bin COMPONENT tools)
