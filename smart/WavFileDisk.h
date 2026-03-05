@@ -93,14 +93,14 @@ public:
 	 * arguments:
 	 * name- the cue point name
 	 */
-	MemBufferSptr getAssocFile( std::string name ){ return _filechunks[name]->getData(); }
+	ByteBufferPtr getAssocFile( std::string name ){ return _filechunks[name]->getData(); }
 
 	/** get pointer to associated label
 	 *
 	 * arguments:
 	 * name- the cue point name
 	 */
-	MemBufferSptr getAssocLabel( std::string name ){ return _labelchunks[name]->getData(); }
+	ByteBufferPtr getAssocLabel( std::string name ){ return _labelchunks[name]->getData(); }
 
 	/** get bytes per sample */
 	std::uint32_t getBytesPerSample(){

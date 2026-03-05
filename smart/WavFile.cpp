@@ -30,9 +30,9 @@ WavFile::fourcc_t::fourcc_t( const char *init )
 WavFile::Chunk::Chunk( Chunk *parent, uint32_t header_size, fourcc_t ckID )
 {
 	header_size = header_size < sizeof(chunk_t) ? sizeof(chunk_t) : header_size;
-	_header = MemBuffer::make_shared(header_size);
+	_header.resize(header_size, 0);
 	_min_size = sizeof(chunk_t);
-	chunk_t *hdr = (chunk_t*)_header->_field;
+	chunk_t *hdr = (chunk_t*)_header.data();
 	if( parent )
 		_filebuf = parent->_filebuf;
 
@@ -69,10 +69,10 @@ WavFile::Chunk::Chunk( Chunk *parent, uint32_t header_size, fourcc_t ckID )
 WavFile::Chunk::Chunk( std::string fname, uint32_t header_size, fourcc_t ckID )
 {
 	header_size = header_size < sizeof(chunk_t) ? sizeof(chunk_t) : header_size;
-	_header = MemBuffer::make_shared(header_size);
+	_header.resize(header_size, 0);
 	_min_size = sizeof(chunk_t);
 	_filebuf = FileBuffer::make_shared( fname );
-	chunk_t *hdr = (chunk_t*)_header->_field;
+	chunk_t *hdr = (chunk_t*)_header.data();
 
 	if( _filebuf != nullptr )
 	{
@@ -98,7 +98,7 @@ WavFile::Chunk::Chunk( std::string fname, uint32_t header_size, fourcc_t ckID )
 uint32_t WavFile::Chunk::getSize()
 {
 	uint32_t rv=0;
-	rv += _header->_size;
+	rv += _header.size();
 
 	rv += getDataSize();
 
@@ -115,23 +115,23 @@ uint32_t WavFile::Chunk::getDataSize()
 
 	if( _filebuf != nullptr )
 	{
-		chunk_t *hdr = (chunk_t*)_header->_field;
+		chunk_t *hdr = (chunk_t*)_header.data();
 		if( hdr->ckSize == 0 )
-			if( _header->_size > sizeof(chunk_t) )
+			if( _header.size() > sizeof(chunk_t) )
 				rv = 0; // error case the ckSize must be bigger than 0
 			else
 				rv = sizeof(chunk_t);
-		else if( hdr->ckSize + sizeof(chunk_t) < _header->_size )
+		else if( hdr->ckSize + sizeof(chunk_t) < _header.size() )
 			rv = 0; // incorrect ckSize, result would be very big number
 		else
-			rv = hdr->ckSize - (_header->_size - sizeof(chunk_t));
+			rv = hdr->ckSize - (_header.size() - sizeof(chunk_t));
 	}
 	else if( _data.size() )
 	{
 		// leaf chunk
 		for( auto i = _data.begin(); i != _data.end(); i++ )
 		{
-			rv += (*i)->_size;
+			rv += (*i)->size();
 		}
 	}
 	else for( auto i = _contents.begin(); i != _contents.end(); i++ )
@@ -166,22 +166,22 @@ uint32_t WavFile::Chunk::fillBuffer( uint8_t **buf, uint32_t &maxlen )
 	if( _filebuf != nullptr )
 		return 0;
 
-	chunk_t *hdr = (chunk_t*)_header->_field;
+	chunk_t *hdr = (chunk_t*)_header.data();
 	hdr->ckSize = rv - sizeof(chunk_t); // the chunk size does not contain chunk_t header bytes
 
-	if( *buf != _header->_field )
-		memcpy( *buf, _header->_field, _header->_size );
-	*buf += _header->_size; maxlen -= _header->_size;
-	rv = _header->_size;
+	if( *buf != _header.data() )
+		memcpy( *buf, _header.data(), _header.size() );
+	*buf += _header.size(); maxlen -= _header.size();
+	rv = _header.size();
 
 	if( _data.size() )
 	{
 		for( auto i = _data.begin(); i != _data.end(); i++ )
 		{
-			if( *buf != (*i)->_field )
-				memcpy( *buf, (*i)->_field, (*i)->_size );
-			*buf += (*i)->_size; maxlen -= (*i)->_size;
-			rv += (*i)->_size;
+			if( *buf != (*i)->data() )
+				memcpy( *buf, (*i)->data(), (*i)->size() );
+			*buf += (*i)->size(); maxlen -= (*i)->size();
+			rv += (*i)->size();
 		}
 	}
 	else for( auto i = _contents.begin(); i != _contents.end(); i++ )
@@ -217,18 +217,18 @@ uint32_t WavFile::Chunk::writeFile( FILE *fp )
 		return 0;
 
 
-	chunk_t *hdr = (chunk_t*)_header->_field;
+	chunk_t *hdr = (chunk_t*)_header.data();
 	hdr->ckSize = rv - sizeof(chunk_t); // the chunk size does not contain chunk_t header bytes
 
-	rv = fwrite( _header->_field, 1, _header->_size, fp );
+	rv = fwrite( _header.data(), 1, _header.size(), fp );
 
 	if( _data.size() )
 	{
-		for (auto i : _data)
+		for (auto &i : _data)
 		{
-			if (i->_field != nullptr)
+			if (!i->empty())
 			{
-				rv += fwrite(i->_field, 1, i->_size, fp);
+				rv += fwrite(i->data(), 1, i->size(), fp);
 			}
 		}
 	}
@@ -256,7 +256,7 @@ void WavFile::Chunk::setChild( Chunk *child )
 	child->_filebuf = _filebuf; // all children use the same file
 };
 
-std::shared_ptr<MemBuffer> WavFile::Chunk::getData( uint32_t i )
+ByteBufferPtr WavFile::Chunk::getData( uint32_t i )
 {
 	if( _filebuf != nullptr )
 	{
@@ -266,16 +266,16 @@ std::shared_ptr<MemBuffer> WavFile::Chunk::getData( uint32_t i )
 			return _data[0];
 
 		// read the data from disk
-		chunk_t *hdr = (chunk_t*)_header->_field;
+		chunk_t *hdr = (chunk_t*)_header.data();
 		if( hdr->ckSize == 0 )
-			return MemBuffer::make_shared(0,0); // chunk with no data
+			return std::make_shared<ByteBuffer>(); // chunk with no data
 		if( hdr->ckID.asU32 == 0 )
-			return MemBuffer::make_shared(0,0); // errant chunk
+			return std::make_shared<ByteBuffer>(); // errant chunk
 
 		// create the buffer into memory and read data in
-		auto bf = MemBuffer::make_shared( getDataSize() );
+		auto bf = std::make_shared<ByteBuffer>( getDataSize() );
 		seekFileStartOfData();
-		fread( bf->_field, bf->_size, 1, _filebuf->_file );
+		fread( bf->data(), bf->size(), 1, _filebuf->_file );
 		_data.push_back( bf );
 	}
 
@@ -285,7 +285,7 @@ std::shared_ptr<MemBuffer> WavFile::Chunk::getData( uint32_t i )
 	}
 
 	// default return empty buffer
-	return MemBuffer::make_shared(0,0);
+	return std::make_shared<ByteBuffer>();
 };
 
 
@@ -300,27 +300,27 @@ void WavFile::Chunk::addPiece(
 	if( _filebuf != nullptr )
 		return;
 
-	addPiece( MemBuffer::make_shared(origin,size) );
+	addPiece( std::make_shared<ByteBuffer>(origin, origin + size) );
 }
 
-std::shared_ptr<MemBuffer> WavFile::Chunk::addPiece( uint32_t size )
+ByteBufferPtr WavFile::Chunk::addPiece( uint32_t size )
 {
 	if( _contents.size() )
-		return MemBuffer::make_shared(0,0);
+		return std::make_shared<ByteBuffer>();
 	if( size == 0 )
-		return MemBuffer::make_shared(0,0);
+		return std::make_shared<ByteBuffer>();
 	// TODO: add support for adding additional data to existing file
 	if( _filebuf != nullptr )
-		return MemBuffer::make_shared(0,0);
+		return std::make_shared<ByteBuffer>();
 
-	std::shared_ptr<MemBuffer> rv = MemBuffer::make_shared( size );
+	ByteBufferPtr rv = std::make_shared<ByteBuffer>( size );
 
 	addPiece( rv );
 
 	return rv;
 }
 
-void WavFile::Chunk::addPiece( std::shared_ptr<MemBuffer> buf )
+void WavFile::Chunk::addPiece( ByteBufferPtr buf )
 {
 	if( _contents.size() )
 		return; // this is not leaf chunk
@@ -336,7 +336,7 @@ void WavFile::Chunk::seekFileEndOfChunk()
 	if( _filebuf == nullptr )
 		return;
 
-	chunk_t *hdr = (chunk_t*)_header->_field;
+	chunk_t *hdr = (chunk_t*)_header.data();
 	int64_t pos = _filepos + sizeof(chunk_t) + hdr->ckSize;
 	if( hdr->ckSize & 1 )
 		pos++; // skip RIFF word-alignment pad byte
@@ -351,7 +351,7 @@ void WavFile::Chunk::seekFileStartOfData( int64_t dataseek )
 	if( _filebuf == nullptr )
 		return;
 
-	int64_t pos = _filepos + _header->_size + dataseek;
+	int64_t pos = _filepos + _header.size() + dataseek;
 	fseek( _filebuf->_file, static_cast<long>(pos), SEEK_SET );
 }
 
@@ -382,7 +382,7 @@ bool WavFile::Chunk::inFileRange()
 	if( pos < _filepos )
 		return false;
 
-	chunk_t *hdr = (chunk_t*)_header->_field;
+	chunk_t *hdr = (chunk_t*)_header.data();
 	int64_t end = _filepos + hdr->ckSize + sizeof(chunk_t);
 	if( hdr->ckSize & 1 )
 		end++; // account for RIFF word-alignment pad byte
@@ -405,7 +405,7 @@ WavFile::LeafChunk::LeafChunk( Chunk *parent, uint32_t header_size, uint32_t dat
 WavFile::RiffChunk::RiffChunk( fourcc_t formType )
 : Chunk( 0, sizeof(riff_chunk_t), "RIFF" )
 {
-	riff_chunk_t *hdr = (riff_chunk_t*)_header->_field;
+	riff_chunk_t *hdr = (riff_chunk_t*)_header.data();
 	_min_size = sizeof(riff_chunk_t);
 
 	hdr->formType = formType;
@@ -414,7 +414,7 @@ WavFile::RiffChunk::RiffChunk( fourcc_t formType )
 WavFile::RiffChunk::RiffChunk( std::string fname, fourcc_t formType )
 : Chunk( fname, sizeof(riff_chunk_t), "RIFF" )
 {
-	riff_chunk_t *hdr = (riff_chunk_t*)_header->_field;
+	riff_chunk_t *hdr = (riff_chunk_t*)_header.data();
 	_min_size = sizeof(riff_chunk_t);
 
 	// verify if the file is in correct form
@@ -434,7 +434,7 @@ WavFile::WaveChunk::WaveChunk( Chunk *parent, uint32_t header_size,
 		uint16_t bytes_per_value
 ): Chunk( parent, header_size, "fmt ")
 {
-	wave_format_t *hdr = (wave_format_t*)_header->_field;
+	wave_format_t *hdr = (wave_format_t*)_header.data();
 
 	hdr->wFormatTag = 0; // the category is initiatet to 0
 	hdr->wChannels = channels;
@@ -453,7 +453,7 @@ WavFile::PcmChunk::PcmChunk( Chunk *parent,
 		uint16_t bits_per_sample
 ): WaveChunk( parent, sizeof(pcm_format_t), channels, samples_per_sec, (bits_per_sample+7)/8)
 {
-	pcm_format_t *hdr =(pcm_format_t*)_header->_field;
+	pcm_format_t *hdr =(pcm_format_t*)_header.data();
 
 	hdr->wBitsPerSample = bits_per_sample;
 	hdr->waveFmt.wFormatTag = 1;
@@ -492,34 +492,38 @@ uint32_t WavFile::PcmDataChunk::writeFile( FILE *fp )
 		if( !rv  )
 			return 0;
 
-		chunk_t *hdr = (chunk_t*)_header->_field;
+		chunk_t *hdr = (chunk_t*)_header.data();
 		hdr->ckSize = rv - sizeof(chunk_t); // the chunk size does not contain chunk_t header bytes
 
-		rv = fwrite( _header->_field, 1, _header->_size, fp );
+		rv = fwrite( _header.data(), 1, _header.size(), fp );
 
 		// custom data part
 		int16_t *sample;
 		int32_t samplelen = _nchannels*sizeof(int16_t);
-		auto obuf = MemBuffer::make_shared( 1024*samplelen );
-		int16_t *pobuf = (int16_t*)obuf->_field;
-		int16_t *end = (int16_t*)((int8_t*)(obuf->_field)+obuf->_size);
+		ByteBuffer obuf( 1024*samplelen );
+		int16_t *pobuf = (int16_t*)obuf.data();
+		int16_t *end = (int16_t*)((int8_t*)(obuf.data())+obuf.size());
 		auto sit = getSampleIterator(samplelen);
-		while( (sample=(int16_t*)sit->getSampleInc( samplelen, _ratefactor)->_field) != 0 )
+		for(;;)
 		{
+			auto sbuf = sit->getSampleInc( samplelen, _ratefactor );
+			if( sbuf->empty() )
+				break;
+			sample = (int16_t*)sbuf->data();
 			memcpy( pobuf, sample, samplelen );
 			pobuf += _nchannels;
 			if( pobuf >= end )
 			{
 				// temporary buffer is full, write the file
-				pobuf = (int16_t*)obuf->_field;
-				rv += fwrite( obuf->_field, 1, obuf->_size, fp );
+				pobuf = (int16_t*)obuf.data();
+				rv += fwrite( obuf.data(), 1, obuf.size(), fp );
 			}
 		}
 		// write the remaining of the not full buffer
-		size_t remains = (size_t)pobuf - (size_t)(obuf->_field);
+		size_t remains = (size_t)pobuf - (size_t)(obuf.data());
 		if( remains > 0 )
 		{
-			rv += fwrite( obuf->_field, 1, remains, fp );
+			rv += fwrite( obuf.data(), 1, remains, fp );
 		}
 	}
 	else
@@ -531,22 +535,22 @@ uint32_t WavFile::PcmDataChunk::writeFile( FILE *fp )
 			// _row_length truncation: write only limited bytes
 			if( fp == NULL )
 				return 0;
-			uint32_t total = _header->_size + limited;
+			uint32_t total = _header.size() + limited;
 			if( !total )
 				return 0;
 
-			chunk_t *hdr = (chunk_t*)_header->_field;
+			chunk_t *hdr = (chunk_t*)_header.data();
 			hdr->ckSize = total - sizeof(chunk_t);
 
-			rv = fwrite( _header->_field, 1, _header->_size, fp );
+			rv = fwrite( _header.data(), 1, _header.size(), fp );
 
 			uint32_t remaining = limited;
 			for( auto &d : _data )
 			{
-				if( !d->_field || remaining == 0 )
+				if( d->empty() || remaining == 0 )
 					break;
-				uint32_t to_write = (d->_size < remaining) ? static_cast<uint32_t>(d->_size) : remaining;
-				rv += fwrite( d->_field, 1, to_write, fp );
+				uint32_t to_write = (d->size() < remaining) ? static_cast<uint32_t>(d->size()) : remaining;
+				rv += fwrite( d->data(), 1, to_write, fp );
 				remaining -= to_write;
 			}
 		}
@@ -616,7 +620,7 @@ public:
 	 * return:
 	 * pointer to the sample of all channels, 0 if the sample does not exist
 	 */
-	virtual MemBufferSptr getSample( uint32_t count = 1 );
+	virtual ByteBufferPtr getSample( uint32_t count = 1 );
 	/** set iterator position
 	 * return:
 	 * pointer to this iterator
@@ -627,7 +631,7 @@ public:
 	 * return:
 	 * pointer to the sample of all channels, 0 if the sample does not exist
 	 */
-	virtual MemBufferSptr getSampleInc( uint32_t count = 1, uint32_t index=1, uint32_t fraction = 0 );
+	virtual ByteBufferPtr getSampleInc( uint32_t count = 1, uint32_t index=1, uint32_t fraction = 0 );
 protected:
 	int64_t _cursor;
 };
@@ -655,17 +659,17 @@ SampleIteratorFile::SampleIteratorFile( WavFile::PcmDataChunk *chunk, uint32_t l
 	setPos(index,fraction);
 }
 
-MemBufferSptr SampleIteratorFile::getSample( uint32_t count )
+ByteBufferPtr SampleIteratorFile::getSample( uint32_t count )
 {
 	_chunk->seekFileStartOfData( _cursor );
-	MemBufferSptr rv = MemBuffer::make_shared( count * _samplelen );
-	fread( rv->_field, _samplelen, count, _chunk->_filebuf->_file );
+	ByteBufferPtr rv = std::make_shared<ByteBuffer>( count * _samplelen );
+	fread( rv->data(), _samplelen, count, _chunk->_filebuf->_file );
 	return rv;
 }
 
-MemBufferSptr SampleIteratorFile::getSampleInc( uint32_t count , uint32_t index, uint32_t fraction )
+ByteBufferPtr SampleIteratorFile::getSampleInc( uint32_t count , uint32_t index, uint32_t fraction )
 {
-	MemBufferSptr rv = getSample( count );
+	ByteBufferPtr rv = getSample( count );
 	nextPos( index, fraction );
 	return rv;
 }
@@ -693,7 +697,7 @@ public:
 	 * return:
 	 * pointer to the sample of all channels, 0 if the sample does not exist
 	 */
-	virtual MemBufferSptr getSample( uint32_t count = 1 );
+	virtual ByteBufferPtr getSample( uint32_t count = 1 );
 	/** set iterator position
 	 * return:
 	 * pointer to this iterator
@@ -704,7 +708,7 @@ public:
 	 * return:
 	 * pointer to the sample of all channels, 0 if the sample does not exist
 	 */
-	virtual MemBufferSptr getSampleInc( uint32_t count = 1, uint32_t index=1, uint32_t fraction = 0 );
+	virtual ByteBufferPtr getSampleInc( uint32_t count = 1, uint32_t index=1, uint32_t fraction = 0 );
 protected:
 	/// Index to the data junk
 	uint32_t	_junkid;
@@ -731,16 +735,16 @@ SampleIteratorMemory::setPos( uint32_t index, uint32_t fraction )
 	_junkid = 0xFFffFFff; // invalidate iterator for the case we will not find the index location
 	for ( unsigned int i=0; i<_chunk->_data.size(); i++ )
 	{
-		if( _chunk->_data[i]->_size < index )
+		if( _chunk->_data[i]->size() < index )
 		{
 			// note error will happen if _size do not divide with _samplelen
-			index -= _chunk->_data[i]->_size;
+			index -= _chunk->_data[i]->size();
 		}
-		else if( (index+_samplelen) <= _chunk->_data[i]->_size ) // protect against buffer overrun
+		else if( (index+_samplelen) <= _chunk->_data[i]->size() ) // protect against buffer overrun
 		{
 			_junkid = i;
-			_junkoffset = (uint8_t*)(_chunk->_data[_junkid]->_field) + index;
-			_junkend = (uint8_t*)(_chunk->_data[_junkid]->_field) + _chunk->_data[_junkid]->_size;
+			_junkoffset = (uint8_t*)(_chunk->_data[_junkid]->data()) + index;
+			_junkend = (uint8_t*)(_chunk->_data[_junkid]->data()) + _chunk->_data[_junkid]->size();
 			break;
 		}
 		else
@@ -775,8 +779,8 @@ SampleIteratorMemory::nextPos( uint32_t index, uint32_t fraction )
 			_junkend = 0;
 			return this;
 		}
-		_junkoffset = ((uint8_t*)_chunk->_data[_junkid]->_field) + ((size_t)_junkoffset - (size_t)_junkend);
-		_junkend = ((uint8_t*)_chunk->_data[_junkid]->_field) + _chunk->_data[_junkid]->_size;
+		_junkoffset = ((uint8_t*)_chunk->_data[_junkid]->data()) + ((size_t)_junkoffset - (size_t)_junkend);
+		_junkend = ((uint8_t*)_chunk->_data[_junkid]->data()) + _chunk->_data[_junkid]->size();
 	}
 
 	if( (_junkoffset+_samplelen) <= _junkend )
@@ -789,8 +793,8 @@ SampleIteratorMemory::nextPos( uint32_t index, uint32_t fraction )
 	if( _junkid < _chunk->_data.size() )
 	{
 		//printf("next buffer\n");
-		_junkoffset = (uint8_t*)(_chunk->_data[_junkid]->_field);
-		_junkend = (uint8_t*)(_chunk->_data[_junkid]->_field) + _chunk->_data[_junkid]->_size;
+		_junkoffset = (uint8_t*)(_chunk->_data[_junkid]->data());
+		_junkend = (uint8_t*)(_chunk->_data[_junkid]->data()) + _chunk->_data[_junkid]->size();
 		return this;
 	}
 	// no more data
@@ -801,15 +805,15 @@ SampleIteratorMemory::nextPos( uint32_t index, uint32_t fraction )
 	return this;
 }
 
-MemBufferSptr SampleIteratorMemory::getSample( uint32_t count )
+ByteBufferPtr SampleIteratorMemory::getSample( uint32_t count )
 {
 	if( _junkid == 0xFFffFFff )
-		return MemBuffer::make_shared(0,0);
+		return std::make_shared<ByteBuffer>();
 	//FIXME: the _samplelen * count can leap over the buffer boundary, new buffer shall be made
-	return MemBuffer::make_shared( _chunk->_data[_junkid], _junkoffset, _samplelen * count );
+	return std::make_shared<ByteBuffer>( _junkoffset, _junkoffset + _samplelen * count );
 }
 
-MemBufferSptr SampleIteratorMemory::getSampleInc( uint32_t count, uint32_t index, uint32_t fraction )
+ByteBufferPtr SampleIteratorMemory::getSampleInc( uint32_t count, uint32_t index, uint32_t fraction )
 {
 	auto rv = getSample( count );
 	nextPos( index, fraction );
@@ -837,7 +841,7 @@ WavFile::PcmDataChunk::getSampleIterator( uint32_t len, uint32_t index, uint32_t
 WavFile::CueChunk::CueChunk( Chunk *parent )
 : Chunk( parent, sizeof(cue_chunk_t), "cue ")
 {
-	cue_chunk_t *hdr = (cue_chunk_t*)_header->_field;
+	cue_chunk_t *hdr = (cue_chunk_t*)_header.data();
 	_min_size = sizeof(cue_chunk_t);
 
 	hdr->dwCuePoints = 0;
@@ -850,9 +854,9 @@ void WavFile::CueChunk::setPoint( fourcc_t name,
 		uint32_t sample_offset
 )
 {
-	cue_chunk_t *hdr = (cue_chunk_t*)_header->_field;
+	cue_chunk_t *hdr = (cue_chunk_t*)_header.data();
 
-	cue_point_t *point = (cue_point_t *)addPiece( sizeof(cue_point_t) )->_field;
+	cue_point_t *point = (cue_point_t *)addPiece( sizeof(cue_point_t) )->data();
 
 	point->dwName = name;
 	point->dwPosition = sample_offset;
@@ -876,7 +880,7 @@ void WavFile::CueChunk::setWavPoint( const char* name,
 
 WavFile::AssocListChunk::AssocListChunk( Chunk *parent ) : Chunk( parent, sizeof(assoc_data_t), "LIST" )
 {
-	assoc_data_t *hdr = (assoc_data_t*)_header->_field;
+	assoc_data_t *hdr = (assoc_data_t*)_header.data();
 	_min_size = sizeof(assoc_data_t);
 
 	hdr->fccAdtl = fourcc_t("adtl");
@@ -887,11 +891,11 @@ WavFile::AssocListChunk::AssocListChunk( Chunk *parent ) : Chunk( parent, sizeof
 WavFile::LabelChunk::LabelChunk( Chunk *parent, fourcc_t name, const char *label )
 : LeafChunk( parent, sizeof(label_chunk_t), strlen(label)+1, "labl" )
 {
-	label_chunk_t *hdr =(label_chunk_t*)_header->_field;
+	label_chunk_t *hdr =(label_chunk_t*)_header.data();
 	_min_size = sizeof(label_chunk_t);
 
 	hdr->fccName = name;
-	strncpy( (char*)_data[0]->_field, (const char*)label, _data[0]->_size );
+	strncpy( (char*)_data[0]->data(), (const char*)label, _data[0]->size() );
 }
 
 //---------------------------------------------------------------------------------------------------------
@@ -899,13 +903,13 @@ WavFile::LabelChunk::LabelChunk( Chunk *parent, fourcc_t name, const char *label
 WavFile::FileChunk::FileChunk( Chunk *parent, fourcc_t name, fourcc_t media, const void *file, uint32_t file_size ) :
 	LeafChunk( parent, sizeof(file_chunk_t), file_size, "file" )
 {
-	file_chunk_t *hdr = (file_chunk_t*)_header->_field;
+	file_chunk_t *hdr = (file_chunk_t*)_header.data();
 	_min_size = sizeof(file_chunk_t);
 
 	hdr->name = name;
 	hdr->media = media;
 
-	memcpy( _data[0]->_field, file, file_size );
+	memcpy( _data[0]->data(), file, file_size );
 }
 
 } // namespace smart

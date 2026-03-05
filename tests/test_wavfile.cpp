@@ -179,13 +179,13 @@ TEST_CASE("WavFileSimplePcm with cue points and associated data", "[wavfile]") {
 
 		// Verify associated file data
 		auto assoc = reader.getAssocFile("CNFG");
-		REQUIRE(assoc->_size > 0);
-		REQUIRE(memcmp(assoc->_field, filedata, strlen(filedata)) == 0);
+		REQUIRE(assoc->size() > 0);
+		REQUIRE(memcmp(assoc->data(), filedata, strlen(filedata)) == 0);
 
 		// Verify label
 		auto label = reader.getAssocLabel("TRIG");
-		REQUIRE(label->_size > 0);
-		REQUIRE(strncmp((const char*)label->_field, "Trigger point", 13) == 0);
+		REQUIRE(label->size() > 0);
+		REQUIRE(strncmp((const char*)label->data(), "Trigger point", 13) == 0);
 	}
 
 	std::remove(test_wav_path);
@@ -219,10 +219,10 @@ TEST_CASE("Round-trip: write then read back verifies sample integrity", "[wavfil
 
 		uint32_t bytes_per_sample = reader.getBytesPerSample();
 		auto first_sample = it->getSample(1);
-		REQUIRE(first_sample->_size == bytes_per_sample);
+		REQUIRE(first_sample->size() == bytes_per_sample);
 
 		// First sample should match what we wrote
-		auto* s = reinterpret_cast<sample_stereo_16_t*>(first_sample->_field);
+		auto* s = reinterpret_cast<sample_stereo_16_t*>(first_sample->data());
 		REQUIRE(s->ch0 == 65);
 		REQUIRE(s->ch1 == -65);
 	}
@@ -530,10 +530,10 @@ TEST_CASE("wav_verify: 24-bit 3-channel odd-frame round-trip", "[wavfile][verify
 		counter = 1;
 		for (uint32_t f = 0; f < num_frames; f++) {
 			auto sample = it->getSampleInc();
-			REQUIRE(sample->_field != nullptr);
-			REQUIRE(sample->_size == bytes_per_frame);
+			REQUIRE(!sample->empty());
+			REQUIRE(sample->size() == bytes_per_frame);
 
-			const auto* p = static_cast<const uint8_t*>(sample->_field);
+			const auto* p = static_cast<const uint8_t*>(sample->data());
 			for (uint32_t ch = 0; ch < num_channels; ch++) {
 				int32_t got = read_i24_le(p + ch * 3);
 				REQUIRE(got == counter);

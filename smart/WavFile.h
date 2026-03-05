@@ -18,7 +18,8 @@
 
 #include <stdio.h>
 
-#include "MemBuffer.h"
+using ByteBuffer = std::vector<uint8_t>;
+using ByteBufferPtr = std::shared_ptr<ByteBuffer>;
 
 #if defined(_MSC_VER)
 #pragma warning(push)
@@ -105,7 +106,7 @@ public:
 		/** Return true if chunk is valid
 		 *
 		 */
-		bool valid(){ chunk_t *hdr = (chunk_t*)_header->_field; return (hdr->ckID.asU32 != 0); };
+		bool valid(){ chunk_t *hdr = (chunk_t*)_header.data(); return (hdr->ckID.asU32 != 0); };
 
 
 		/** Get size of the chunk hierarchy
@@ -149,7 +150,7 @@ public:
 		 * returns:
 		 *  0 if no allocated data field
 		 */
-		virtual std::shared_ptr<MemBuffer> getData( uint32_t i=0 );
+		virtual ByteBufferPtr getData( uint32_t i=0 );
 
 		/** add piece of externally managed data into list of data
 		 *
@@ -169,14 +170,14 @@ public:
 		 * returns:
 		 * pointer to the allocated memory
 		 */
-		std::shared_ptr<MemBuffer> addPiece( uint32_t size );		/// the size of data
+		ByteBufferPtr addPiece( uint32_t size );		/// the size of data
 
 		/** add piece of premade buffer
 		 *
 		 * parameters:
 		 * buf - the buffer
 		 */
-		void addPiece( std::shared_ptr<MemBuffer> buf );
+		void addPiece( ByteBufferPtr buf );
 
 		/** Get number of contaned chunks
 		 *
@@ -218,8 +219,8 @@ public:
 		uint32_t getPadSize();
 
 	protected:
-		std::shared_ptr<MemBuffer> _header;
-		std::vector< std::shared_ptr<MemBuffer> > _data;
+		ByteBuffer _header;
+		std::vector< ByteBufferPtr > _data;
 		std::vector<Chunk*> _contents; // list of child chunks managed elsewhere
 		uint32_t _min_size; /// minimum size of the chunk, consider it empty if less or this
 		// when reading wav file from disk:
@@ -311,7 +312,7 @@ public:
 				uint16_t bits_per_sample
 		);
 		PcmChunk( Chunk *parent );
-		pcm_format_t *getPcmFormat() { return (pcm_format_t *)_header->_field; };
+		pcm_format_t *getPcmFormat() { return (pcm_format_t *)_header.data(); };
 	};
 
 #pragma pack(push, 1)
@@ -384,7 +385,7 @@ public:
 			 * return:
 			 * pointer to the sample of all channels, 0 if the sample does not exist
 			 */
-			virtual MemBufferSptr getSample( uint32_t count = 1 ) = 0;
+			virtual ByteBufferPtr getSample( uint32_t count = 1 ) = 0;
 			/** set iterator position
 			 * return:
 			 * pointer to this iterator
@@ -395,7 +396,7 @@ public:
 			 * return:
 			 * pointer to the sample of all channels, 0 if the sample does not exist
 			 */
-			virtual MemBufferSptr getSampleInc( uint32_t count = 1, uint32_t index=1, uint32_t fraction = 0 ) = 0;
+			virtual ByteBufferPtr getSampleInc( uint32_t count = 1, uint32_t index=1, uint32_t fraction = 0 ) = 0;
 			/** */
 			virtual ~SampleIterator(){};
 		protected:
@@ -512,7 +513,7 @@ public:
 		LabelChunk( Chunk *parent, fourcc_t name, const char *label );
 		/// constructor for initiating chunk when describing file on disk
 		LabelChunk( Chunk *parent ) : LeafChunk( parent, sizeof(label_chunk_t), 0, "labl" ){};
-		label_chunk_t *getLabelChunkHeader(){ return (label_chunk_t*)_header->_field; };
+		label_chunk_t *getLabelChunkHeader(){ return (label_chunk_t*)_header.data(); };
 	};
 
 #pragma pack(push, 1)
@@ -536,7 +537,7 @@ public:
 		FileChunk( Chunk *parent, fourcc_t name, fourcc_t media, const void *file, uint32_t file_size );
 		/// constructor for initiating chunk when describing file on disk
 		FileChunk( Chunk *parent ) : LeafChunk( parent, sizeof(file_chunk_t), 0, "file" ){};
-		file_chunk_t *getFileChunkHeader(){ return (file_chunk_t*)_header->_field; };
+		file_chunk_t *getFileChunkHeader(){ return (file_chunk_t*)_header.data(); };
 	};
 };
 

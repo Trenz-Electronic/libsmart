@@ -61,7 +61,7 @@ public:
 	void addAssocFile( const char *name, const char *media, const void *file, uint32_t file_size ){	_filechunks.push_back( std::make_shared<FileChunk>( &_assocchunk, name, media, file, file_size ) );}
 
 	/// allocate memory for data field
-	std::shared_ptr<MemBuffer> newData( uint32_t data_size ){	return _datachunk.addPiece( data_size ); }
+	ByteBufferPtr newData( uint32_t data_size ){	return _datachunk.addPiece( data_size ); }
 
 	/// Add externally managed fraction into data chunk.
 	/// Note: in the case of adding a null pointer, the user is responsible for writing the data chunk themselves.
