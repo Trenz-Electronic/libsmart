@@ -1,24 +1,25 @@
-# Introduction
+# libsmart
 
 ![CMake on multiple platforms](https://github.com/Trenz-Electronic/libsmart/actions/workflows/cmake-multi-platform.yml/badge.svg)
 
-C++ routines for:
+A C++20 utility library for embedded Linux systems on Xilinx SoCs, targeting Petalinux and Debian.
+
+## Features
+
 * UIO device management
 * WAV file reading and writing
 * Process creation
 * Thread management
 * Reading and writing files
 
-This is in use in customer project firmware, both Petalinux and Debian.
-
-# Examples
+## Examples
 
 The `examples/` directory contains sample programs:
 
 * **uart_terminal** — Simple serial terminal for a 16550-compatible UART exposed via UIO. Multiplexes keyboard input and UART RX interrupts using `poll()`.
 * **gpio_blink** — Blinks the lowest bit of a Xilinx AXI GPIO at 1 Hz via UIO.
 
-# Building
+## Building
 
 ```shell
 sudo apt install libcrack2-dev
@@ -28,7 +29,7 @@ cmake ..
 cmake --build .
 ```
 
-# Running tests
+## Running tests
 
 ```shell
 cd build
@@ -37,7 +38,7 @@ cmake --build .
 ctest --output-on-failure
 ```
 
-# Creating Debian packages
+## Creating Debian packages
 
 ```shell
 cd build
