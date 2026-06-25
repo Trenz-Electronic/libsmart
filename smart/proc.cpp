@@ -6,7 +6,6 @@
 #include <string.h>		// strtok
 
 #include "string.h"
-#include "File.h"	// smart::File
 
 #include "proc.h"	// ourselves.
 
@@ -68,29 +67,28 @@ static void assign(std::vector<unsigned int>& dst, const std::vector<unsigned in
 	std::copy(src.begin(), src.end(), std::begin(dst));
 }
 
-std::string stat::refresh()
+std::string stat::parse(const std::string& proc_stat_text)
 {
-	char	line[4000];
-	FILE*	f = fopen("/proc/stat", "r");
-	if (f == nullptr) {
-		return "Stat::update: /proc/stat cannot be opened";
-	}
-	File	f_auto(f);
+	const std::string&	text = proc_stat_text;
+	const size_t		n = text.size();
+	std::vector<char>	line;	// mutable, NUL-terminated copy of the current line, for strtok_r.
 
 	unsigned int	cpu_count = 0;
-	for (;;) {
-		// Read the line into buffer.
-		line[0] = 0;
-		line[sizeof(line)-1u] = 0;
-		char*	r_fgets = fgets(line, sizeof(line)-1u, f);
-		if (r_fgets == nullptr) {
-			break;
+	size_t			pos = 0;
+	while (pos < n) {
+		// Extract one line [pos, eol) and make a writable, NUL-terminated copy.
+		size_t	eol = text.find('\n', pos);
+		if (eol == std::string::npos) {
+			eol = n;
 		}
+		line.assign(text.begin() + pos, text.begin() + eol);
+		line.push_back('\0');
+		pos = eol + 1u;
 
 		// Parse the name.
 		char* saveptr = nullptr;
 		// start the strtok
-		char* name = strtok_r(line, stat_delim, &saveptr);
+		char* name = strtok_r(line.data(), stat_delim, &saveptr);
 		if (name == nullptr) {
 			continue;
 		}
@@ -159,6 +157,28 @@ std::string stat::refresh()
 	cpu.resize(cpu_count);
 
 	return std::string();
+}
+
+std::string stat::refresh()
+{
+	FILE*	f = fopen("/proc/stat", "r");
+	if (f == nullptr) {
+		return "Stat::update: /proc/stat cannot be opened";
+	}
+
+	// Read the whole pseudo-file into memory, then hand it to the IO-free parser.
+	std::string	text;
+	char		buf[4096];
+	for (;;) {
+		const size_t	r = fread(buf, 1u, sizeof(buf), f);
+		text.append(buf, r);
+		if (r < sizeof(buf)) {
+			break;
+		}
+	}
+	fclose(f);
+
+	return parse(text);
 }
 
 static void subtract_array(

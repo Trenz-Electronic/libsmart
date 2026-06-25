@@ -84,9 +84,15 @@ public:
 	/// Constructor.
 	stat();
 
-	/// Refresh the stats from the live system.
+	/// Refresh the stats from the live system (reads /proc/stat, then parse()s it).
 	/// \return Empty string iff successful, error message otherwise.
 	std::string refresh();
+
+	/// Parse the textual contents of a /proc/stat file into this object.
+	/// This is the IO-free core used by refresh(); exposed so the parsing can be
+	/// unit-tested without the live filesystem.
+	/// \return Empty string iff successful, error message otherwise.
+	std::string parse(const std::string& proc_stat_text);
 
 	/// Subtract data from this one.
 	stat subtract(const stat& rhs) const;

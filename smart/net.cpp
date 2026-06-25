@@ -14,34 +14,40 @@
 namespace smart {
 namespace net {
 
-std::vector<struct in_addr>	getBroadcastAddresses()
+std::vector<struct in_addr>	broadcastAddressesOf(const struct ifaddrs* ifaddr)
 {
 	std::vector<struct in_addr>	r;
-	struct ifaddrs*				ifaddr = nullptr;
-	struct ifaddrs*				ifa;
 	struct in_addr				bip;
 
+	for (const struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+		// Will not work if no address.
+		// Will not work on addresses other than INET.
+		if (ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_INET) {
+			continue;
+		}
+		bip = reinterpret_cast<struct sockaddr_in *>(ifa->ifa_ifu.ifu_broadaddr)->sin_addr;
+		if (bip.s_addr == htonl(INADDR_LOOPBACK)) {
+			continue;
+		}
+		r.push_back(bip);
+	}
+	return r;
+}
+
+std::vector<struct in_addr>	getBroadcastAddresses()
+{
+	struct ifaddrs*	ifaddr = nullptr;
 	if (getifaddrs(&ifaddr) < 0) {
 		throw std::runtime_error(ssprintf("getifaddrs failed, errno=%d", errno));
 	}
+	std::vector<struct in_addr>	r;
 	try {
-		for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-			// Will not work if no address.
-			// Will not work on addresses other than INET.
-			if (ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_INET) {
-				continue;
-			}
-			bip = reinterpret_cast<struct sockaddr_in *>(ifa->ifa_ifu.ifu_broadaddr)->sin_addr;
-			if (bip.s_addr == htonl(INADDR_LOOPBACK)) {
-				continue;
-			}
-			r.push_back(bip);
-		}
-		freeifaddrs(ifaddr);
+		r = broadcastAddressesOf(ifaddr);
 	}
 	catch (...) {
-		freeifaddrs(ifaddr);
+		// Preserve the original behavior: errors here are swallowed.
 	}
+	freeifaddrs(ifaddr);
 	return r;
 }
 
