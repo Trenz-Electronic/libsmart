@@ -427,9 +427,9 @@ TEST_CASE("wav_verify: ratefactor>1 round-trip (P3)", "[wavfile][verify]") {
 }
 
 TEST_CASE("wav_verify: row_length truncation round-trip (P4)", "[wavfile][verify]") {
-	// 24-bit mono: block_align=3, internal _row_length=4.
-	// Provide 13 bytes (not a multiple of _row_length=4).
-	// Writer should truncate to 12 bytes (4 complete frames).
+	// 24-bit mono: block_align=3. Provide 13 bytes (not a whole number of
+	// 3-byte frames). The writer truncates the declared size to whole frames:
+	// floor(13/3)*3 = 12 bytes (4 complete frames).
 	const uint32_t data_bytes = 13;
 	uint8_t sound_data[data_bytes];
 	for (uint32_t i = 0; i < data_bytes; i++)
@@ -457,7 +457,7 @@ TEST_CASE("wav_verify: row_length truncation round-trip (P4)", "[wavfile][verify
 		CHECK(r.format_tag == 1);
 		CHECK(r.channels == 1);
 		CHECK(r.block_align == 3);
-		// Truncated to floor(13/4)*4 = 12 bytes = 4 frames of 24-bit mono
+		// Truncated to floor(13/3)*3 = 12 bytes = 4 frames of 24-bit mono
 		CHECK(r.data_ck_size == 12);
 		CHECK_FALSE(r.has_issue_tagged("RIFF_SIZE_MISMATCH"));
 		CHECK_FALSE(r.has_issue_tagged("P3_DATA_NOT_BLOCK_ALIGNED"));
@@ -467,11 +467,52 @@ TEST_CASE("wav_verify: row_length truncation round-trip (P4)", "[wavfile][verify
 	std::remove(path);
 }
 
+TEST_CASE("wav_verify: row_length truncation corrupts 24-bit 6-channel", "[wavfile][verify]") {
+	// nBlockAlign = 6 ch * 3 bytes = 18 (NOT a multiple of 4). The buggy
+	// PcmDataChunk rounds each row up to a 32-bit boundary (_row_length=20) and
+	// truncates the declared data size to a multiple of 20 instead of 18.
+	// 8 frames = 144 packed bytes; floor(144/20)*20 = 140 — not a whole number
+	// of 18-byte frames — so the file is corrupt and the trailing 4 bytes of
+	// audio are silently dropped. The declared data size must be a whole number
+	// of nBlockAlign-sized frames (i.e. == 144 here).
+	const uint32_t num_channels = 6;
+	const uint32_t num_frames = 8;
+	const uint32_t bytes_per_frame = num_channels * 3;        // 18
+	const uint32_t data_bytes = num_frames * bytes_per_frame; // 144
+
+	std::vector<uint8_t> sound_data(data_bytes);
+	for (uint32_t i = 0; i < data_bytes; i++)
+		sound_data[i] = static_cast<uint8_t>(i + 1);
+
+	const char* path = "/tmp/test_wavfile_24bit_6ch.wav";
+	{
+		smart::WavFileSimplePcm simple(num_channels, 12500000, 24);
+		simple.addData(sound_data.data(), data_bytes);
+
+		FILE* f = fopen(path, "wb");
+		REQUIRE(f != nullptr);
+		uint32_t written = simple.writeFile(f);
+		fclose(f);
+		REQUIRE(written > 0);
+	}
+
+	auto r = wav_verify_file(path);
+	INFO(r.summary());
+
+	REQUIRE(r.has_fmt);
+	REQUIRE(r.has_data);
+	CHECK(r.block_align == 18);
+	CHECK(r.data_ck_size == data_bytes);                          // 144, not 140
+	CHECK_FALSE(r.has_issue_tagged("P3_DATA_NOT_BLOCK_ALIGNED"));
+	CHECK(r.valid);
+
+	std::remove(path);
+}
+
 TEST_CASE("wav_verify: 24-bit 3-channel odd-frame round-trip", "[wavfile][verify]") {
 	// blockAlign = 3 ch * 3 bytes = 9 (odd), exercising non-trivial packing.
-	// The library's PcmDataChunk rounds rows to 4-byte alignment internally
-	// (_row_length=12 for this format), so num_frames must satisfy
-	// num_frames * 9 % 12 == 0, i.e. num_frames is a multiple of 4.
+	// The declared data size is truncated to whole 9-byte frames, so any frame
+	// count round-trips cleanly; 136 is just a representative value.
 	const uint32_t num_frames = 136;
 	const uint32_t num_channels = 3;
 	const uint32_t bytes_per_frame = num_channels * 3; // 3 ch * 3 bytes = 9

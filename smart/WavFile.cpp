@@ -300,6 +300,9 @@ void WavFile::Chunk::addPiece(
 	if( _filebuf != nullptr )
 		return;
 
+	// `origin` must point to a valid buffer of `size` bytes; the data is copied in.
+	// To reserve space and fill the data chunk later, use the addPiece(size) /
+	// newData() overload instead of passing a null pointer here.
 	addPiece( std::make_shared<ByteBuffer>(origin, origin + size) );
 }
 
@@ -474,7 +477,13 @@ void WavFile::PcmDataChunk::setSampleWidth(unsigned int widthInBits)
 	}
 
 	const unsigned int	nbits = ((widthInBits + 7u) / 8u) * 8u;
-	_row_length = ((nbits * _nchannels + 31) /32) * 4;
+	// Truncate the declared data size to whole packed frames, i.e. to the same
+	// nBlockAlign (= nChannels * bytesPerSample) the fmt chunk advertises and the
+	// samples are written at. The previous formula rounded each row up to a 32-bit
+	// boundary (((nbits*nch+31)/32)*4); when nBlockAlign was not a multiple of 4
+	// (e.g. 24-bit 6-ch -> 18) that truncated the data/RIFF sizes to a non-frame
+	// boundary, corrupting the file and silently dropping the trailing frame.
+	_row_length = _nchannels * (nbits / 8u);
 }
 
 uint32_t WavFile::PcmDataChunk::writeFile( FILE *fp )

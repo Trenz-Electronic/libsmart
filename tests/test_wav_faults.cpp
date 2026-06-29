@@ -277,6 +277,55 @@ TEST_CASE("P3: data ckSize smaller than actual payload", "[wav-faults]") {
 	CHECK(r.data_ck_size == 333);
 	// data ckSize=333 is not a multiple of blockAlign=4
 	CHECK(r.has_issue_tagged("P3_DATA_NOT_BLOCK_ALIGNED"));
+	// For PCM, a data chunk that is not a whole number of frames is genuinely
+	// corrupt: P3 is an error, so the file is invalid (not merely a warning).
+	CHECK_FALSE(r.valid);
+}
+
+// ===========================================================================
+// P4 (row-length truncation): data ckSize is a multiple of the 32-bit-aligned
+// row width but not of nBlockAlign — the libsmart PcmDataChunk fingerprint.
+// ===========================================================================
+
+// fmt chunk for an arbitrary PCM format (used to reproduce the 6ch/24-bit case).
+static void push_fmt_chunk_pcm(std::vector<uint8_t>& b,
+                               uint16_t channels, uint32_t rate, uint16_t bits) {
+	uint16_t block_align = static_cast<uint16_t>(channels * ((bits + 7) / 8));
+	push_cc(b, "fmt ");
+	push_u32(b, 16);
+	push_u16(b, 1);                       // PCM
+	push_u16(b, channels);
+	push_u32(b, rate);
+	push_u32(b, rate * block_align);      // avg bytes/sec
+	push_u16(b, block_align);
+	push_u16(b, bits);
+}
+
+TEST_CASE("P4: row-length-truncated data ckSize is a named error", "[wav-faults]") {
+	// 6ch/24-bit: nBlockAlign=18, libsmart _row_length = ((24*6+31)/32)*4 = 20.
+	// Declare data ckSize=140 (a multiple of 20, NOT of 18) with 140 physical
+	// bytes so the RIFF size still matches the file: the row-length truncation
+	// is then the only fault to isolate.
+	std::vector<uint8_t> w;
+	push_cc(w, "RIFF");
+	push_u32(w, 0);
+	push_cc(w, "WAVE");
+	push_fmt_chunk_pcm(w, 6, 12500000, 24);
+	push_cc(w, "data");
+	push_u32(w, 140);
+	push_zeros(w, 140);
+	fix_riff_size(w);
+
+	dump_file("/tmp/fault_p4_rowlen.wav", w);
+
+	auto r = wav_verify(w.data(), w.size());
+	INFO(r.summary());
+
+	CHECK(r.block_align == 18);
+	CHECK(r.data_ck_size == 140);
+	CHECK(r.has_issue_tagged("P4_ROWLENGTH_TRUNCATION"));
+	CHECK(r.has_issue_tagged("P3_DATA_NOT_BLOCK_ALIGNED"));
+	CHECK_FALSE(r.valid);
 }
 
 // ===========================================================================
@@ -450,5 +499,16 @@ TEST_CASE("stored blobs: verify fault detection", "[wav-faults][stored]") {
 		auto r = wav_verify_file(data_path("fault_p7.wav"));
 		INFO(r.summary());
 		CHECK(r.has_issue_tagged("P7_FMT_AFTER_DATA"));
+	}
+
+	SECTION("0001_wav_rowlength_bug.wav — PcmDataChunk row-length truncation") {
+		// 6ch/24-bit field artifact (manifestation 3b): nBlockAlign=18,
+		// data ckSize=140 (mult of _row_length 20, not of 18), and the caller
+		// wrote full 18-byte frames past the truncated RIFF end.
+		auto r = wav_verify_file(data_path("0001_wav_rowlength_bug.wav"));
+		INFO(r.summary());
+		CHECK(r.has_issue_tagged("P4_ROWLENGTH_TRUNCATION"));
+		CHECK(r.has_issue_tagged("RIFF_SIZE_MISMATCH"));
+		CHECK_FALSE(r.valid);
 	}
 }

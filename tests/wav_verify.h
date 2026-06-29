@@ -383,12 +383,32 @@ inline WavVerifyResult wav_verify(const uint8_t* data, size_t len) {
     if (!r.has_data)
         add_issue(r, WavIssueLevel::error, "MISSING_DATA", "no data chunk found");
 
-    // P3: data ckSize not frame-aligned
+    // P3: data ckSize not frame-aligned. For PCM (format_tag==1) a data chunk
+    // that is not a whole number of frames is genuinely corrupt (samples lost or
+    // a partial trailing frame), so this is an error, not a warning.
     if (r.has_fmt && r.has_data && r.format_tag == 1) {
         if (r.block_align > 0 && r.data_ck_size % r.block_align != 0) {
-            add_issue(r, WavIssueLevel::warning, "P3_DATA_NOT_BLOCK_ALIGNED",
+            add_issue(r, WavIssueLevel::error, "P3_DATA_NOT_BLOCK_ALIGNED",
                       "data ckSize=" + std::to_string(r.data_ck_size)
                       + " is not a multiple of blockAlign=" + std::to_string(r.block_align));
+        }
+    }
+
+    // P4: data ckSize is row-length-truncated — a multiple of the 32-bit-aligned
+    // row width ((bitsRoundedTo8 * channels + 31)/32)*4 but not of nBlockAlign.
+    // This is the libsmart PcmDataChunk _row_length fingerprint (WAV_FILE_BUG.md):
+    // it names the root cause behind the generic RIFF_SIZE_MISMATCH / P3 symptoms.
+    if (r.has_fmt && r.has_data && r.format_tag == 1 && r.block_align > 0) {
+        uint32_t nbits = ((r.bits_per_sample + 7u) / 8u) * 8u;
+        uint32_t row_length = ((nbits * r.channels + 31u) / 32u) * 4u;
+        if (row_length > 0 && row_length != r.block_align &&
+            r.data_ck_size % r.block_align != 0 &&
+            r.data_ck_size % row_length == 0) {
+            add_issue(r, WavIssueLevel::error, "P4_ROWLENGTH_TRUNCATION",
+                      "data ckSize=" + std::to_string(r.data_ck_size)
+                      + " is a multiple of the 32-bit row length " + std::to_string(row_length)
+                      + " but not of nBlockAlign " + std::to_string(r.block_align)
+                      + " (PcmDataChunk row-length truncation)");
         }
     }
 

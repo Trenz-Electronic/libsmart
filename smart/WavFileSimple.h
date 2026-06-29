@@ -63,9 +63,9 @@ public:
 	/// allocate memory for data field
 	ByteBufferPtr newData( uint32_t data_size ){	return _datachunk.addPiece( data_size ); }
 
-	/// Add externally managed fraction into data chunk.
-	/// Note: in the case of adding a null pointer, the user is responsible for writing the data chunk themselves.
-	/// \param data	Pointer to the data, can be null.
+	/// Add externally managed fraction into data chunk. The data is copied in.
+	/// To reserve space and fill the data chunk later, use newData() instead.
+	/// \param data	Pointer to the data; must be non-null.
 	/// \param size Size of the data, in bytes.
 	void addData( uint8_t *data, uint32_t data_size ){ _datachunk.addPiece( data, data_size );}
 

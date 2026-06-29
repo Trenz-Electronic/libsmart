@@ -125,7 +125,8 @@ These tests write WAV files using the library, then verify the output with
 | `wav_verify: WavFileSimplePcm with cue, labels, files` | Structure + **P5 round-trip** (`CHECK_FALSE(P5_SEQ_POSITION)`) |
 | `wav_verify: detect P1/P2 issues with odd-length labels` | **P1/P2 round-trip**: writer with odd-length label "ab" produces clean output |
 | `wav_verify: ratefactor>1 round-trip (P3)` | **P3 round-trip**: 1001 samples with ratefactor=3, verifies `data_ck_size == 1336` and valid structure |
-| `wav_verify: row_length truncation round-trip (P4)` | **P4 round-trip**: 24-bit mono with 13 bytes (not a multiple of `_row_length`=4), verifies `data_ck_size == 12` |
+| `wav_verify: row_length truncation round-trip (P4)` | **P4 round-trip**: 24-bit mono, 13 bytes truncated to whole 3-byte frames, verifies `data_ck_size == 12` |
+| `wav_verify: row_length truncation corrupts 24-bit 6-channel` | **P4 regression**: 24-bit 6-ch (`block_align=18`) — the field format the old tests dodged; verifies `data_ck_size == 144` (not the truncated 140) and `valid` |
 | `wav_verify: 24-bit 3-channel odd-frame round-trip` | 24-bit 3-channel format with `block_align=9`, sample-level read-back |
 
 ### test_wav_faults.cpp — Fault detection tests
@@ -139,12 +140,13 @@ byte-level helpers, and also stored as binary files in `tests/data/`.
 | `baseline: helpers produce valid WAVs` | None | `valid == true` |
 | `P1: missing pad byte after odd-sized chunk` | Odd-sized LIST with no pad byte | `P1_NO_PAD` |
 | `P2: ckSize inflated by 4-byte alignment padding` | labl `ckSize=8` instead of 7 | `P2_PADDED_CKSIZE` |
-| `P3: data ckSize smaller than actual payload` | data `ckSize=333` (not a multiple of `block_align=4`) | `P3_DATA_NOT_BLOCK_ALIGNED` |
+| `P3: data ckSize smaller than actual payload` | data `ckSize=333` (not a multiple of `block_align=4`) | `P3_DATA_NOT_BLOCK_ALIGNED` (error → invalid) |
+| `P4: row-length-truncated data ckSize is a named error` | data `ckSize=140` (multiple of 32-bit row width 20, not of `block_align=18`) | `P4_ROWLENGTH_TRUNCATION` + `P3_DATA_NOT_BLOCK_ALIGNED` |
 | `P4: data ckSize larger than actual payload` | data `ckSize=500` overflows RIFF | `CHUNK_OVERFLOW` |
 | `P5: dwPosition set to sequential index` | `dwPosition=0,1` but `dwSampleOffset=100,500` | `P5_SEQ_POSITION` |
 | `P7: non-standard chunk ordering (cue before fmt)` | cue before fmt, but fmt still before data | No `P7_FMT_AFTER_DATA` (not a violation) |
 | `P7b: data chunk before fmt chunk` | data chunk appears before fmt | `P7_FMT_AFTER_DATA` |
-| `stored blobs: verify fault detection` | Loads `tests/data/fault_p*.wav` | Same tags as runtime tests |
+| `stored blobs: verify fault detection` | Loads `tests/data/fault_p*.wav` and `0001_wav_rowlength_bug.wav` | Same tags as runtime tests; `0001` → `P4_ROWLENGTH_TRUNCATION` + `RIFF_SIZE_MISMATCH` |
 
 ### tests/data/ — Stored fault blobs
 
@@ -176,7 +178,8 @@ Header-only WAV verifier. Parses RIFF/WAVE structure and reports issues.
 | `CUE_COUNT_MISMATCH` | warning | Declared cue point count does not match what fits |
 | `P1_NO_PAD` | warning | Odd-sized chunk missing its pad byte |
 | `P2_PADDED_CKSIZE` | warning | labl `ckSize` includes zero-padding beyond the null-terminated string |
-| `P3_DATA_NOT_BLOCK_ALIGNED` | warning | data `ckSize` is not a multiple of `blockAlign` |
+| `P3_DATA_NOT_BLOCK_ALIGNED` | error | data `ckSize` is not a multiple of `blockAlign` (PCM): corrupt, not a whole number of frames |
+| `P4_ROWLENGTH_TRUNCATION` | error | data `ckSize` is a multiple of the 32-bit-aligned row width but not of `nBlockAlign` (libsmart `PcmDataChunk` `_row_length` fingerprint) |
 | `P5_SEQ_POSITION` | info | `dwPosition` differs from `dwSampleOffset` for a data-chunk cue point |
 | `P7_FMT_AFTER_DATA` | warning | data chunk appears before fmt chunk |
 | `FILE_OPEN_FAILED` | error | Cannot open file (file wrapper only) |
