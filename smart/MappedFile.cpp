@@ -30,8 +30,8 @@
 #include "MappedFile.h"	// ourselves.
 
 #ifdef SMART_REGISTER_TRACE
+#	include <atomic>	// std::atomic
 #	include <chrono>	// std::chrono::steady_clock
-#	include <memory>	// std::shared_ptr
 #endif
 
 #if defined(WIN32)
@@ -63,8 +63,11 @@ struct TraceHandlerHolder {
 	void*			user;
 };
 
-// Accessed with std::atomic_load/store so the handler can be swapped while other threads access registers.
-std::shared_ptr<const TraceHandlerHolder>	g_traceHandler;
+// The handler can be swapped while other threads access registers. A holder is immutable once
+// published and never freed (a reader may still be using the old one); that leaks a few bytes per
+// setTraceHandler() call, which is fine for a debug facility. (GCC 4.9 on the target has no
+// std::atomic_load for shared_ptr.)
+std::atomic<const TraceHandlerHolder*>	g_traceHandler(nullptr);
 
 void traceAccess(
 	const RegisterAccess::Kind	kind,
@@ -75,7 +78,7 @@ void traceAccess(
 	const std::uint32_t		mask,
 	const bool			fromShadow)
 {
-	const auto holder = std::atomic_load(&g_traceHandler);
+	const TraceHandlerHolder* const holder = g_traceHandler.load(std::memory_order_acquire);
 	if (holder) {
 		const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
 			std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -88,11 +91,11 @@ void traceAccess(
 
 void MappedFile::setTraceHandler(RegisterTraceHandler handler, void* user)
 {
-	std::shared_ptr<const TraceHandlerHolder> holder;
+	const TraceHandlerHolder* holder = nullptr;
 	if (handler) {
-		holder = std::make_shared<const TraceHandlerHolder>(TraceHandlerHolder{ handler, user });
+		holder = new TraceHandlerHolder{ handler, user };
 	}
-	std::atomic_store(&g_traceHandler, holder);
+	g_traceHandler.store(holder, std::memory_order_release);
 }
 
 #	define SMART_REGISTER_TRACE_EVENT(...)	traceAccess(__VA_ARGS__)
