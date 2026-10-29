@@ -69,6 +69,12 @@ struct TraceHandlerHolder {
 // std::atomic_load for shared_ptr.)
 std::atomic<const TraceHandlerHolder*>	g_traceHandler(nullptr);
 
+// Scope stack of the calling thread. Deeper nesting than the stack is counted but not stored,
+// so current() then reports the innermost scope that fitted.
+const unsigned int	SCOPE_STACK_SIZE = 16;
+__thread const char*	t_scopes[SCOPE_STACK_SIZE];
+__thread unsigned int	t_scopeDepth = 0;
+
 void traceAccess(
 	const RegisterAccess::Kind	kind,
 	const std::string&		filename,
@@ -82,12 +88,34 @@ void traceAccess(
 	if (holder) {
 		const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
 			std::chrono::steady_clock::now().time_since_epoch()).count();
-		const RegisterAccess a = { kind, filename, offset, index, value, mask, fromShadow, static_cast<std::uint64_t>(us) };
+		const RegisterAccess a = { kind, filename, offset, index, value, mask, fromShadow, static_cast<std::uint64_t>(us),
+			RegisterTraceScope::current() };
 		holder->handler(a, holder->user);
 	}
 }
 
 } // anonymous namespace
+
+RegisterTraceScope::RegisterTraceScope(const char* name)
+{
+	if (t_scopeDepth < SCOPE_STACK_SIZE) {
+		t_scopes[t_scopeDepth] = name;
+	}
+	++t_scopeDepth;
+}
+
+RegisterTraceScope::~RegisterTraceScope()
+{
+	--t_scopeDepth;
+}
+
+const char* RegisterTraceScope::current()
+{
+	if (t_scopeDepth == 0) {
+		return nullptr;
+	}
+	return t_scopes[(t_scopeDepth < SCOPE_STACK_SIZE ? t_scopeDepth : SCOPE_STACK_SIZE) - 1];
+}
 
 void MappedFile::setTraceHandler(RegisterTraceHandler handler, void* user)
 {

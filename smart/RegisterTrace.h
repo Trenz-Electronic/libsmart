@@ -33,6 +33,8 @@ namespace smart {
 /// written in between. The folded entry stays at the position of its first read, so
 /// entries are ordered by the first access, not by the last one.
 ///
+/// Accesses can be attributed to scopes (RegisterTraceScope) and filtered by them, see setScopeFilter().
+///
 /// Thread-safe. The recorder must outlive its installation (see install()).
 class RegisterTraceRecorder {
 public:
@@ -51,6 +53,8 @@ public:
 		std::uint32_t		value;
 		std::uint32_t		mask;
 		bool			fromShadow;
+		/// Index into scopeName(); 0 is "-" (no scope).
+		std::uint32_t		scopeId;
 	};
 
 	/// capacity	Maximum number of entries kept; the oldest are dropped first.
@@ -69,16 +73,32 @@ public:
 	/// "filename@offset" of a map id used in Entry::mapId.
 	std::string mapName(std::uint32_t mapId) const;
 
+	/// Name of a scope id used in Entry::scopeId; "-" for id 0 (accesses outside any scope).
+	std::string scopeName(std::uint32_t scopeId) const;
+
 	/// Number of entries dropped because the ring was full.
 	std::uint64_t dropped() const;
+
+	/// Number of accesses ignored by the scope filter.
+	std::uint64_t filtered() const;
+
+	/// Record only the accesses that pass this filter; the others are counted but not stored.
+	/// spec is a comma-separated list of scope names. A name with a leading '-' excludes that scope,
+	/// any other name (optionally with a leading '+') includes it; if there is at least one include,
+	/// only included scopes are recorded. A name matches a scope with the same name and the scopes
+	/// below it ("setup" matches "setup/blade"). "none" stands for accesses outside any scope.
+	/// Examples: "-poll" everything except polling; "+setup,+blade" only configuration.
+	/// An empty spec records everything (the default).
+	void setScopeFilter(const std::string& spec);
 
 	/// Remove all entries. Sequence numbers keep increasing.
 	void clear();
 
 	/// Write the entries as text, one line per entry:
-	///   seq first_us last_us count kind map index value mask shadow
+	///   seq first_us last_us count kind map index value mask shadow scope
 	/// kind is R, W or M (masked write); map is filename@offset; index, value and mask
-	/// are hex (mask is "-" except for M); shadow is 1 for reads served from the shadow copy.
+	/// are hex (mask is "-" except for M); shadow is 1 for reads served from the shadow copy;
+	/// scope is the scope name or "-".
 	/// Lines starting with '#' are comments.
 	void write(std::ostream& os) const;
 
@@ -111,7 +131,14 @@ private:
 	std::uint64_t				_frontEntryNo;	// entry number of _entries.front()
 	std::uint64_t				_nextSeq;
 	std::uint64_t				_dropped;
+	std::uint64_t				_filtered;
 	std::uint64_t				_version;	// bumped on every change, for the file sink
+
+	std::vector<std::string>		_scopeNames;
+	std::unordered_map<std::string, std::uint32_t>	_scopeIds;
+	std::string				_filterSpec;
+	std::vector<std::string>		_filterInclude;
+	std::vector<std::string>		_filterExclude;
 
 	std::vector<std::string>		_mapNames;
 	std::unordered_map<std::string, std::uint32_t>	_mapIds;

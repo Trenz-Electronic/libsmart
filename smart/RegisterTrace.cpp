@@ -24,6 +24,32 @@ std::uint64_t regKey(const std::uint32_t mapId, const std::uint32_t index)
 	return (static_cast<std::uint64_t>(mapId) << 32) | index;
 }
 
+// Does the scope name match the filter pattern: the same scope or one below it ("setup" matches "setup/blade")?
+bool scopeMatches(const std::string& name, const std::string& pattern)
+{
+	return name == pattern
+		|| (name.size() > pattern.size() && name.compare(0, pattern.size(), pattern) == 0 && name[pattern.size()] == '/');
+}
+
+bool anyScopeMatches(const std::vector<std::string>& patterns, const std::string& name)
+{
+	for (const std::string& p : patterns) {
+		if (scopeMatches(name, p)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+std::string trim(const std::string& s)
+{
+	const std::size_t b = s.find_first_not_of(" \t");
+	if (b == std::string::npos) {
+		return std::string();
+	}
+	return s.substr(b, s.find_last_not_of(" \t") - b + 1);
+}
+
 char kindChar(const RegisterAccess::Kind kind)
 {
 	switch (kind) {
@@ -46,6 +72,7 @@ RegisterTraceRecorder::RegisterTraceRecorder(const std::size_t capacity)
 	_frontEntryNo(0),
 	_nextSeq(0),
 	_dropped(0),
+	_filtered(0),
 	_version(0),
 	_sinkPeriodMs(500),
 	_sinkRunning(false),
@@ -53,6 +80,8 @@ RegisterTraceRecorder::RegisterTraceRecorder(const std::size_t capacity)
 	_sinkWrittenVersion(0),
 	_sinkStop(false)
 {
+	_scopeNames.push_back("-");
+	_scopeIds.emplace("-", 0);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -68,6 +97,35 @@ void RegisterTraceRecorder::record(const RegisterAccess& access)
 	_restartSinkIfForked();
 
 	std::lock_guard<std::mutex> lock(_mutex);
+
+	// Scope name without whitespace (the text format is space separated); "-" when outside any scope.
+	std::string scope = access.scope != nullptr ? access.scope : "";
+	for (char& ch : scope) {
+		if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+			ch = '_';
+		}
+	}
+	if (scope.empty()) {
+		scope = "-";
+	}
+
+	if (!_filterInclude.empty() || !_filterExclude.empty()) {
+		const std::string filterName = scope == "-" ? "none" : scope;
+		if ((!_filterInclude.empty() && !anyScopeMatches(_filterInclude, filterName)) || anyScopeMatches(_filterExclude, filterName)) {
+			++_filtered;
+			return;
+		}
+	}
+
+	std::uint32_t scopeId;
+	const auto scopeIt = _scopeIds.find(scope);
+	if (scopeIt == _scopeIds.end()) {
+		scopeId = static_cast<std::uint32_t>(_scopeNames.size());
+		_scopeNames.push_back(scope);
+		_scopeIds.emplace(scope, scopeId);
+	} else {
+		scopeId = scopeIt->second;
+	}
 
 	// Resolve the map id.
 	const std::string name = access.filename + "@" + std::to_string(access.offset);
@@ -90,7 +148,7 @@ void RegisterTraceRecorder::record(const RegisterAccess& access)
 		const auto last = _lastRead.find(key);
 		if (last != _lastRead.end() && last->second >= _frontEntryNo) {
 			Entry& e = _entries[static_cast<std::size_t>(last->second - _frontEntryNo)];
-			if (e.value == access.value && e.fromShadow == access.fromShadow) {
+			if (e.value == access.value && e.fromShadow == access.fromShadow && e.scopeId == scopeId) {
 				++e.count;
 				e.lastUs = access.timestampUs;
 				return;
@@ -112,6 +170,7 @@ void RegisterTraceRecorder::record(const RegisterAccess& access)
 	e.value = access.value;
 	e.mask = access.mask;
 	e.fromShadow = access.fromShadow;
+	e.scopeId = scopeId;
 
 	if (_entries.size() >= _capacity) {
 		_entries.pop_front();
@@ -139,6 +198,58 @@ std::string RegisterTraceRecorder::mapName(const std::uint32_t mapId) const
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+std::string RegisterTraceRecorder::scopeName(const std::uint32_t scopeId) const
+{
+	std::lock_guard<std::mutex> lock(_mutex);
+	return scopeId < _scopeNames.size() ? _scopeNames[scopeId] : std::string();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+std::uint64_t RegisterTraceRecorder::filtered() const
+{
+	std::lock_guard<std::mutex> lock(_mutex);
+	return _filtered;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+void RegisterTraceRecorder::setScopeFilter(const std::string& spec)
+{
+	std::vector<std::string> include;
+	std::vector<std::string> exclude;
+
+	std::size_t pos = 0;
+	while (pos <= spec.size()) {
+		std::size_t end = spec.find(',', pos);
+		if (end == std::string::npos) {
+			end = spec.size();
+		}
+		std::string token = trim(spec.substr(pos, end - pos));
+		pos = end + 1;
+		if (token.empty()) {
+			continue;
+		}
+		if (token[0] == '-') {
+			token = trim(token.substr(1));
+			if (!token.empty()) {
+				exclude.push_back(token);
+			}
+		} else {
+			if (token[0] == '+') {
+				token = trim(token.substr(1));
+			}
+			if (!token.empty()) {
+				include.push_back(token);
+			}
+		}
+	}
+
+	std::lock_guard<std::mutex> lock(_mutex);
+	_filterSpec = spec;
+	_filterInclude.swap(include);
+	_filterExclude.swap(exclude);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 std::uint64_t RegisterTraceRecorder::dropped() const
 {
 	std::lock_guard<std::mutex> lock(_mutex);
@@ -160,8 +271,12 @@ void RegisterTraceRecorder::write(std::ostream& os) const
 {
 	std::lock_guard<std::mutex> lock(_mutex);
 
-	os << "# regtrace v1: seq first_us last_us count kind map index value mask shadow\n";
+	os << "# regtrace v2: seq first_us last_us count kind map index value mask shadow scope\n";
 	os << "# dropped " << _dropped << "\n";
+	os << "# filtered " << _filtered << "\n";
+	if (!_filterSpec.empty()) {
+		os << "# scope-filter " << _filterSpec << "\n";
+	}
 
 	char line[512];
 	for (const Entry& e : _entries) {
@@ -171,7 +286,7 @@ void RegisterTraceRecorder::write(std::ostream& os) const
 		} else {
 			std::snprintf(mask, sizeof(mask), "-");
 		}
-		std::snprintf(line, sizeof(line), "%llu %llu %llu %u %c %s 0x%X 0x%08X %s %d\n",
+		std::snprintf(line, sizeof(line), "%llu %llu %llu %u %c %s 0x%X 0x%08X %s %d %s\n",
 			static_cast<unsigned long long>(e.seq),
 			static_cast<unsigned long long>(e.firstUs),
 			static_cast<unsigned long long>(e.lastUs),
@@ -181,7 +296,8 @@ void RegisterTraceRecorder::write(std::ostream& os) const
 			e.index,
 			e.value,
 			mask,
-			e.fromShadow ? 1 : 0);
+			e.fromShadow ? 1 : 0,
+			_scopeNames[e.scopeId].c_str());
 		os << line;
 	}
 }

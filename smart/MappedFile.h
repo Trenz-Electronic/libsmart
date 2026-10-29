@@ -39,12 +39,38 @@ struct RegisterAccess {
 	bool			fromShadow;
 	/// Monotonic timestamp in microseconds.
 	std::uint64_t		timestampUs;
+	/// Innermost RegisterTraceScope active on the accessing thread, or nullptr (must outlive the call only).
+	const char*		scope;
 };
 
 /// Callback for traced register accesses.
 /// Called on the thread that does the access, after the access has completed; it must be
 /// thread-safe and fast, and must not access any MappedFile (that would recurse).
 typedef void (*RegisterTraceHandler)(const RegisterAccess& access, void* user);
+
+/// Names the code region the current thread is in, so that register accesses can be attributed to
+/// it and filtered by it (e.g. "poll", "setup"). Scopes nest; the innermost one wins and is reported
+/// in RegisterAccess::scope. The name must be a string literal (or otherwise outlive the scope) and
+/// should not contain whitespace. Use through SMART_REGISTER_TRACE_SCOPE().
+class RegisterTraceScope {
+public:
+	explicit RegisterTraceScope(const char* name);
+	~RegisterTraceScope();
+
+	RegisterTraceScope(const RegisterTraceScope&) = delete;
+	RegisterTraceScope& operator=(const RegisterTraceScope&) = delete;
+
+	/// Innermost active scope of the calling thread, or nullptr.
+	static const char* current();
+};
+
+#	define SMART_REGISTER_TRACE_CONCAT2(a, b)	a##b
+#	define SMART_REGISTER_TRACE_CONCAT(a, b)	SMART_REGISTER_TRACE_CONCAT2(a, b)
+/// Attribute the register accesses made until the end of the enclosing block to the scope "name".
+/// Use as a statement: SMART_REGISTER_TRACE_SCOPE("poll");
+#	define SMART_REGISTER_TRACE_SCOPE(name)	::smart::RegisterTraceScope SMART_REGISTER_TRACE_CONCAT(smart_register_trace_scope_, __LINE__)(name)
+#else
+#	define SMART_REGISTER_TRACE_SCOPE(name)	((void)0)
 #endif // SMART_REGISTER_TRACE
 
 /// Memory-mapped file.
