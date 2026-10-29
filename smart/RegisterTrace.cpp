@@ -7,6 +7,8 @@
 
 #include <chrono>		// std::chrono
 #include <cstdio>		// std::snprintf, std::rename, std::remove
+#include <cstdlib>		// std::strtol
+#include <cstring>		// std::strncmp
 #include <fstream>		// std::ofstream
 #include <ostream>		// std::ostream
 #include <thread>		// std::this_thread::sleep_for
@@ -18,6 +20,28 @@
 namespace smart {
 
 namespace {
+
+/// MappedFile opened from a file descriptor is named "filehandle:N". Descriptor numbers differ from run to run,
+/// so show the path they point to (for example /dev/uio3) instead. Unresolvable names are returned unchanged.
+std::string resolveFilename(const std::string& filename)
+{
+	static const char	prefix[] = "filehandle:";
+	if (filename.compare(0, sizeof(prefix) - 1, prefix) != 0) {
+		return filename;
+	}
+	char*			end = nullptr;
+	const long		fd = std::strtol(filename.c_str() + sizeof(prefix) - 1, &end, 10);
+	if (end == nullptr || *end != 0 || fd < 0) {
+		return filename;
+	}
+	char			path[256];
+	const std::string	link = "/proc/self/fd/" + std::to_string(fd);
+	const ssize_t		n = readlink(link.c_str(), path, sizeof(path) - 1);
+	if (n <= 0 || path[0] != '/') {
+		return filename;
+	}
+	return std::string(path, static_cast<std::size_t>(n));
+}
 
 std::uint64_t regKey(const std::uint32_t mapId, const std::uint32_t index)
 {
@@ -133,7 +157,7 @@ void RegisterTraceRecorder::record(const RegisterAccess& access)
 	const auto it = _mapIds.find(name);
 	if (it == _mapIds.end()) {
 		mapId = static_cast<std::uint32_t>(_mapNames.size());
-		_mapNames.push_back(name);
+		_mapNames.push_back(resolveFilename(access.filename) + "@" + std::to_string(access.offset));
 		_mapIds.emplace(name, mapId);
 	} else {
 		mapId = it->second;
