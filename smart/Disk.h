@@ -7,11 +7,10 @@
 
 #pragma once
 
+#include <cstdint>		// std::uint64_t
 #include <functional>	// std::function
-#include <string>	// std::string
-#include <vector>	// std::vector
-
-#include <stdint.h>		// uint64_t
+#include <string>		// std::string
+#include <vector>		// std::vector
 
 namespace smart {
 /// Disk operations: list partitions, list mounted filesystems, mount and unmount disk.
